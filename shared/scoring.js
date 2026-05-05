@@ -7,7 +7,8 @@
 
 const { computeRisk: _localCompute, SIGNAL_WEIGHTS, THRESHOLDS } = require('./risk');
 
-const SCORING_URL = process.env.SCORING_URL || null;
+const SCORING_URL   = process.env.SCORING_URL || null;
+const SCORING_TOKEN = process.env.SCORING_AUTH_TOKEN || null;
 
 function isSelfHosted() {
   return !SCORING_URL;
@@ -16,10 +17,12 @@ function isSelfHosted() {
 async function computeRisk(signals, scenario) {
   if (!SCORING_URL) return _localCompute(signals);
   try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (SCORING_TOKEN) headers.Authorization = `Bearer ${SCORING_TOKEN}`;
     const res = await fetch(`${SCORING_URL}/api/score`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ signals, scenario }),
+      method: 'POST',
+      headers,
+      body:   JSON.stringify({ signals, scenario }),
     });
     if (!res.ok) throw new Error(`scoring service responded ${res.status}`);
     return res.json();
