@@ -87,6 +87,30 @@ async function initSchema() {
       runs  INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (key, date)
     )`,
+    `CREATE TABLE IF NOT EXISTS gauntlet.monthly_usage (
+      key        TEXT    NOT NULL REFERENCES gauntlet.api_keys(key),
+      year_month TEXT    NOT NULL,
+      runs       INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (key, year_month)
+    )`,
+    `CREATE TABLE IF NOT EXISTS gauntlet.anonymous_usage (
+      ip    TEXT    NOT NULL,
+      date  TEXT    NOT NULL,
+      runs  INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (ip, date)
+    )`,
+    `CREATE TABLE IF NOT EXISTS gauntlet.burst_usage (
+      bucket  TEXT    NOT NULL,
+      minute  TEXT    NOT NULL,
+      count   INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (bucket, minute)
+    )`,
+    `CREATE TABLE IF NOT EXISTS gauntlet.registration_usage (
+      ip    TEXT    NOT NULL,
+      date  TEXT    NOT NULL,
+      count INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (ip, date)
+    )`,
     'CREATE INDEX IF NOT EXISTS idx_sessions_visitor  ON gauntlet.sessions(visitor_id)',
     'CREATE INDEX IF NOT EXISTS idx_sessions_scenario ON gauntlet.sessions(scenario)',
     'CREATE INDEX IF NOT EXISTS idx_sessions_ended    ON gauntlet.sessions(ended_at)',
@@ -95,6 +119,9 @@ async function initSchema() {
     'CREATE INDEX IF NOT EXISTS idx_visitor_ja3       ON gauntlet.visitor_ja3(visitor_id)',
     'CREATE INDEX IF NOT EXISTS idx_visitor_ua        ON gauntlet.visitor_ua(visitor_id)',
     'CREATE INDEX IF NOT EXISTS idx_daily_usage_key   ON gauntlet.daily_usage(key)',
+    'CREATE INDEX IF NOT EXISTS idx_anon_usage_date   ON gauntlet.anonymous_usage(date)',
+    'CREATE INDEX IF NOT EXISTS idx_burst_usage_min   ON gauntlet.burst_usage(minute)',
+    'CREATE INDEX IF NOT EXISTS idx_reg_usage_date    ON gauntlet.registration_usage(date)',
     // OAuth columns — safe to run on existing tables
     'ALTER TABLE gauntlet.api_keys ADD COLUMN IF NOT EXISTS oauth_provider TEXT',
     'ALTER TABLE gauntlet.api_keys ADD COLUMN IF NOT EXISTS oauth_id       TEXT',

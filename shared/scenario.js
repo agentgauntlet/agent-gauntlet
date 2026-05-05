@@ -27,6 +27,7 @@ const fs          = require('fs');
 const { execSync } = require('child_process');
 const tlsFp       = require('./tls-fingerprint');
 const { computeRisk, SIGNAL_WEIGHTS, THRESHOLDS, isSelfHosted } = require('./scoring');
+const rateLimit = require('./rate-limit');
 const { computeVisitorId, handleFor }              = require('./visitor-store');
 const { PgVisitorStore }                           = require('./pg-visitor-store');
 const { initSchema }                               = require('./db');
@@ -105,35 +106,74 @@ function publicRisk(risk, keyTier = 'free') {
   return { ...base, signals: (risk.breakdown || []).map(b => b.signal) };
 }
 
-// Middleware: optionally validates x-api-key header.
-// No key → anonymous run (proceeds, skipped from leaderboard).
-// Invalid key → 401. Over daily limit → 429.
+function send429(res, info) {
+  if (info.retryAfterSec) res.set('Retry-After', String(info.retryAfterSec));
+  return res.status(429).json({ ok: false, ...info });
+}
+
+// Middleware: validates x-api-key + enforces all rate limits.
+//
+// Anonymous: 5 sessions/day per IP, 3/min burst (rate-limit.js)
+// Free key:  100/day (api-keys.js) + 20/min burst
+// Pro key:   5000/month + 60/min burst
+//
+// Invalid key → 401. Any limit hit → 429 with Retry-After.
 async function attachApiKey(req, res, next) {
   try {
-    const rawKey = req.headers['x-api-key'] || req.query.api_key;
+    const ip       = rateLimit.getClientIp(req);
+    req.clientIp   = ip;
+    const rawKey   = req.headers['x-api-key'] || req.query.api_key;
+
     if (!rawKey) {
+      const burst = await rateLimit.checkBurst(`ip:${ip}`, rateLimit.ANON_BURST_PER_MIN);
+      if (!burst.allowed) return send429(res, burst);
+
+      const day = await rateLimit.checkAnonymousDaily(ip);
+      if (!day.allowed) {
+        return send429(res, { ...day, hint: 'Sign up for a free API key for 100 runs/day.' });
+      }
       req.apiKey  = null;
       req.keyTier = 'anonymous';
       return next();
     }
+
     const keyRow = await validateKey(rawKey);
     if (!keyRow || !keyRow.active) {
       return res.status(401).json({ ok: false, reason: 'invalid_api_key' });
     }
+
+    const burstLimit = keyRow.tier === 'pro' || keyRow.tier === 'enterprise'
+      ? rateLimit.PRO_BURST_PER_MIN : rateLimit.FREE_BURST_PER_MIN;
+    const burst = await rateLimit.checkBurst(`key:${keyRow.key}`, burstLimit);
+    if (!burst.allowed) return send429(res, burst);
+
+    if (keyRow.tier === 'pro' || keyRow.tier === 'enterprise') {
+      const month = await rateLimit.checkProMonthly(keyRow.key);
+      if (!month.allowed) {
+        return send429(res, { ...month, hint: 'Pro tier resets at the start of the next UTC month.' });
+      }
+    }
+
     const usage = await checkAndIncrementUsage(keyRow.key, keyRow.tier);
     if (!usage.allowed) {
-      return res.status(429).json({
-        ok: false, reason: usage.reason,
-        runsToday: usage.runsToday, dailyLimit: usage.dailyLimit,
-        hint: 'Upgrade to Pro for unlimited runs.',
-      });
+      return send429(res, { ...usage, hint: 'Upgrade to Pro for higher limits.' });
     }
+
     req.apiKey  = keyRow.key;
     req.keyTier = keyRow.tier;
     next();
   } catch (e) {
     next(e);
   }
+}
+
+// Registration limit middleware: 5 keys/day per IP across manual + OAuth.
+async function rateLimitRegistration(req, res, next) {
+  const ip = rateLimit.getClientIp(req);
+  req.clientIp = ip;
+  const r = await rateLimit.checkRegistration(ip);
+  if (!r.allowed) return send429(res, { ...r, hint: 'Try again tomorrow or use a different network.' });
+  next();
 }
 
 // Returns the shared base fields every scenario session needs.
@@ -224,6 +264,7 @@ function createScenario({
 
   // ── Express app ──────────────────────────────────────────────────────────
   const app = express();
+  app.set('trust proxy', true); // Fly puts real client IP in Fly-Client-IP / X-Forwarded-For
   app.use(express.json({ limit: '256kb' }));
 
   app.use((req, _res, next) => {
@@ -398,7 +439,7 @@ function createScenario({
                currentRisk: publicRisk(s.lastRisk || computeRisk(s.signals), s.keyTier) });
   });
 
-  app.post('/api/keys/register', async (req, res) => {
+  app.post('/api/keys/register', rateLimitRegistration, async (req, res) => {
     const { name, email } = req.body || {};
     if (!name || !email) return res.status(400).json({ ok: false, reason: 'name_and_email_required' });
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -423,7 +464,7 @@ function createScenario({
 
   // ── OAuth: GitHub ──────────────────────────────────────────────────────────
 
-  app.get('/auth/github', (req, res) => {
+  app.get('/auth/github', rateLimitRegistration, (req, res) => {
     if (!process.env.GITHUB_CLIENT_ID) return res.status(503).send('GitHub OAuth not configured');
     const appUrl   = process.env.APP_URL || 'http://localhost:3080';
     const state    = _newState('github');
@@ -459,7 +500,7 @@ function createScenario({
 
   // ── OAuth: LinkedIn ────────────────────────────────────────────────────────
 
-  app.get('/auth/linkedin', (req, res) => {
+  app.get('/auth/linkedin', rateLimitRegistration, (req, res) => {
     if (!process.env.LINKEDIN_CLIENT_ID) return res.status(503).send('LinkedIn OAuth not configured');
     const appUrl   = process.env.APP_URL || 'http://localhost:3080';
     const state    = _newState('linkedin');
@@ -559,6 +600,7 @@ function createScenario({
 module.exports = {
   createScenario,
   attachApiKey,
+  rateLimitRegistration,
   // Pure helpers available without calling createScenario
   randInt, median,
   scoreHeaders, scoreFingerprint, scoreTls,
