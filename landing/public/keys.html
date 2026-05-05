@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Get API Key — AgentGauntlet</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen font-sans flex flex-col">
+
+  <header class="border-b border-gray-800">
+    <div class="max-w-5xl mx-auto px-6 py-5 flex items-center gap-3">
+      <a href="/" class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center font-bold text-white text-lg">G</div>
+        <span class="text-xl font-bold tracking-tight">AgentGauntlet</span>
+      </a>
+      <span class="text-gray-600">/</span>
+      <span class="text-gray-400 text-sm">Get API Key</span>
+    </div>
+  </header>
+
+  <main class="flex-1 flex items-center justify-center px-6 py-16">
+    <div class="w-full max-w-md">
+
+      <!-- OAuth sign-in panel -->
+      <div id="login-panel">
+        <h1 class="text-2xl font-bold mb-2">Get a free API key</h1>
+        <p class="text-gray-400 text-sm mb-8">100 keyed runs per day. Unlocks leaderboard tracking and signal names in every response. Sign in once — your key is tied to your account.</p>
+
+        <div class="space-y-3">
+          <a href="/auth/github"
+             class="flex items-center justify-center gap-3 w-full py-3 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700 text-sm font-semibold transition-colors">
+            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.2 11.38.6.1.82-.26.82-.58v-2.03c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.74.08-.73.08-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.49 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 3-.4c1.02 0 2.04.13 3 .4 2.28-1.55 3.3-1.23 3.3-1.23.66 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.63-5.48 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.22.69.83.57C20.57 21.8 24 17.3 24 12c0-6.63-5.37-12-12-12z"/>
+            </svg>
+            Continue with GitHub
+          </a>
+
+          <a href="/auth/linkedin"
+             class="flex items-center justify-center gap-3 w-full py-3 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700 text-sm font-semibold transition-colors">
+            <svg class="w-5 h-5 text-[#0A66C2]" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M20.45 20.45h-3.55v-5.57c0-1.33-.03-3.04-1.85-3.04-1.85 0-2.13 1.45-2.13 2.94v5.67H9.37V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.45v6.29zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM3.56 20.45h3.55V9H3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.72v20.56C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.72V1.72C24 .77 23.2 0 22.22 0z"/>
+            </svg>
+            Continue with LinkedIn
+          </a>
+        </div>
+
+        <p id="error-msg" class="mt-4 text-red-400 text-sm text-center hidden"></p>
+
+        <p class="mt-6 text-center text-xs text-gray-600">
+          Signing in lets you return to retrieve your key. Anonymous runs still work without any key.
+        </p>
+      </div>
+
+      <!-- Success panel (shown after OAuth redirect) -->
+      <div id="success-panel" class="hidden">
+        <div class="text-green-400 text-3xl mb-4">&#10003;</div>
+        <h1 class="text-2xl font-bold mb-1">Your API key</h1>
+        <p id="key-subtitle" class="text-gray-400 text-sm mb-6">Copy it now — it won't be shown again. Sign in again with the same account to retrieve it.</p>
+
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-4 flex items-center gap-3 mb-6">
+          <code id="key-display" class="flex-1 text-violet-300 text-sm break-all font-mono"></code>
+          <button id="copy-btn" onclick="copyKey()"
+            class="shrink-0 px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs text-gray-300 transition-colors">
+            Copy
+          </button>
+        </div>
+
+        <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 text-sm text-gray-400 mb-6">
+          <p class="font-medium text-gray-300 mb-2">Usage</p>
+          <pre class="text-xs overflow-x-auto"><code>curl -X POST https://agentgauntlet.ai/api/login/session \
+  -H "Content-Type: application/json" \
+  -H "X-Api-Key: <span id="key-inline"></span>" \
+  -d '{}'</code></pre>
+        </div>
+
+        <a href="/leaderboard" class="block w-full text-center py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700 text-sm font-semibold transition-colors">
+          View leaderboard →
+        </a>
+      </div>
+
+    </div>
+  </main>
+
+  <script>
+    const params   = new URLSearchParams(location.search);
+    const key      = params.get('key');
+    const isNew    = params.get('new') === '1';
+    const error    = params.get('error');
+    const provider = params.get('provider');
+
+    if (key) {
+      document.getElementById('login-panel').classList.add('hidden');
+      document.getElementById('success-panel').classList.remove('hidden');
+      document.getElementById('key-display').textContent = key;
+      document.getElementById('key-inline').textContent  = key;
+      if (!isNew) {
+        document.getElementById('key-subtitle').textContent =
+          'Welcome back — this is your existing key for this ' + (provider || 'account') + ' account.';
+      }
+      // Clean the URL so the key isn't sitting in the address bar
+      history.replaceState({}, '', '/keys.html');
+    } else if (error) {
+      const msgs = {
+        invalid_state:          'Session expired. Please try again.',
+        github_token_failed:    'GitHub authorization failed. Please try again.',
+        github_error:           'Something went wrong with GitHub sign-in.',
+        linkedin_token_failed:  'LinkedIn authorization failed. Please try again.',
+        linkedin_error:         'Something went wrong with LinkedIn sign-in.',
+      };
+      const el = document.getElementById('error-msg');
+      el.textContent = msgs[error] || 'Sign-in failed. Please try again.';
+      el.classList.remove('hidden');
+      history.replaceState({}, '', '/keys.html');
+    }
+
+    function copyKey() {
+      navigator.clipboard.writeText(document.getElementById('key-display').textContent).then(() => {
+        const btn = document.getElementById('copy-btn');
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+      });
+    }
+  </script>
+
+</body>
+</html>

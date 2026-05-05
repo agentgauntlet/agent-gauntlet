@@ -1,0 +1,23 @@
+{
+  "name": "agentgauntlet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Open benchmark of realistic web scenarios with active anti-agent defenses.",
+  "scripts": {
+    "build": "node build.js",
+    "start": "npm run build && concurrently --names landing,cart,payment,bank --prefix-colors blue,cyan,magenta,yellow \"npm start --prefix landing\" \"npm start --prefix cart-checkout\" \"npm start --prefix payment-checkout\" \"npm start --prefix bank-login\"",
+    "start:dev": "concurrently --names landing,cart,payment,bank --prefix-colors blue,cyan,magenta,yellow \"npm start --prefix landing\" \"npm start --prefix cart-checkout\" \"npm start --prefix payment-checkout\" \"npm start --prefix bank-login\"",
+    "install:all": "npm install --prefix landing && npm install --prefix cart-checkout && npm install --prefix payment-checkout && npm install --prefix bank-login",
+    "postinstall": "npm install --prefix landing && npm install --prefix cart-checkout && npm install --prefix payment-checkout && npm install --prefix bank-login"
+  },
+  "dependencies": {
+    "concurrently": "^8.2.2",
+    "dotenv": "^17.4.2",
+    "express": "^4.19.2",
+    "pg": "^8.20.0"
+  },
+  "devDependencies": {
+    "javascript-obfuscator": "^4.1.1",
+    "terser": "^5.31.0"
+  }
+}

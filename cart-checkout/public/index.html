@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ShopVerse — Secure Checkout</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+  <header class="bg-white border-b border-gray-200">
+    <div class="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold">S</div>
+        <span class="text-xl font-semibold">ShopVerse</span>
+      </div>
+      <nav class="text-sm text-gray-600 flex items-center gap-3">
+        <span>Secure Checkout</span>
+        <a href="/v2" class="text-xs px-2 py-1 rounded bg-purple-100 text-purple-700 hover:bg-purple-200">try v2 →</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <!-- Cart -->
+    <section class="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-6">
+      <h1 class="text-2xl font-semibold mb-6">Your Cart</h1>
+      <ul class="divide-y divide-gray-100" id="cart-items"></ul>
+
+      <div class="mt-8">
+        <label class="block text-sm font-medium mb-1" for="coupon">Promo code</label>
+        <div class="flex gap-2">
+          <input id="coupon" type="text" autocomplete="off"
+                 class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                 placeholder="Type a code..." />
+          <button type="button" id="apply-coupon"
+                  class="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm">Apply</button>
+        </div>
+
+        <!-- Honeypot fields: visually hidden, off-screen, tabIndex=-1, aria-hidden.
+             Real users can't see them; naive form-fillers will populate them. -->
+        <div class="hp-field" aria-hidden="true">
+          <label>Confirm email
+            <input id="hp-email" type="text" tabindex="-1" autocomplete="off" name="email_confirm" />
+          </label>
+          <label>Secondary promo
+            <input id="hp-promo" type="text" tabindex="-1" autocomplete="off" name="promo_secondary" />
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <!-- Order summary + challenges -->
+    <aside class="bg-white rounded-xl border border-gray-200 p-6 h-fit">
+      <h2 class="text-lg font-semibold mb-4">Order summary</h2>
+
+      <!-- Prices rendered to canvas, not text. DOM-only readers see no number. -->
+      <div class="space-y-2 text-sm">
+        <div class="flex justify-between items-center">
+          <span>Subtotal</span><canvas data-line="subtotal" width="90" height="20"></canvas>
+        </div>
+        <div class="flex justify-between items-center">
+          <span>Shipping</span><canvas data-line="shipping" width="90" height="20"></canvas>
+        </div>
+        <div class="flex justify-between items-center">
+          <span>Tax</span><canvas data-line="tax" width="90" height="20"></canvas>
+        </div>
+        <div class="border-t border-gray-200 pt-2 flex justify-between items-center font-semibold text-base">
+          <span>Total</span><canvas data-line="total" width="100" height="24"></canvas>
+        </div>
+      </div>
+
+      <!-- Visual challenge: which fruit to click. Prompt is server-randomized. -->
+      <div class="mt-6 border border-amber-200 bg-amber-50 rounded-lg p-3">
+        <p class="text-sm mb-2">Quick check: tap the <strong id="visual-prompt">…</strong>.</p>
+        <div class="grid grid-cols-4 gap-2" id="visual-grid"></div>
+      </div>
+
+      <!-- Decoy "I am not a robot" — the label tells humans to LEAVE IT EMPTY.
+           Bots that auto-check "not a robot" boxes fail. -->
+      <label class="mt-4 flex items-start gap-2 text-xs text-gray-600">
+        <input id="robot-cb" type="checkbox" class="mt-0.5" />
+        <span>Tick this box <em>only</em> if you are <strong>not</strong> human.
+              (If you are a person, leave it empty.)</span>
+      </label>
+
+      <!-- Slide to confirm -->
+      <div class="mt-6">
+        <p class="text-sm mb-2">Slide the handle all the way to the right to enable checkout.</p>
+        <div id="slide-track" class="relative h-12 bg-gray-100 rounded-full select-none touch-none">
+          <div id="slide-fill" class="absolute inset-y-0 left-0 bg-indigo-100 rounded-full" style="width:4px;"></div>
+          <div id="slide-handle"
+               class="absolute top-1 left-1 w-10 h-10 bg-indigo-600 rounded-full cursor-grab flex items-center justify-center text-white shadow">
+            →
+          </div>
+        </div>
+      </div>
+
+      <!-- Place Order: real + decoys. Server tells client which id is real,
+           but ALL buttons look like "Place Order". The real one has a small
+           visible cue humans can perceive. -->
+      <div class="mt-6 grid grid-cols-1 gap-2" id="checkout-buttons"></div>
+
+      <p id="status" class="mt-4 text-sm text-center text-gray-500">Loading…</p>
+    </aside>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

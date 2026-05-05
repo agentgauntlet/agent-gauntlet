@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ShopVerse — Checkout (v2)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+  <header class="bg-white border-b border-gray-200">
+    <div class="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold">S</div>
+        <span class="text-xl font-semibold">ShopVerse</span>
+        <span class="ml-2 text-xs px-2 py-0.5 bg-purple-100 text-purple-700 rounded">v2 · vision-agent test</span>
+      </div>
+      <nav class="text-sm flex items-center gap-3">
+        <a href="/leaderboard" class="text-indigo-600 hover:underline">Leaderboard</a>
+        <a href="/"            class="text-gray-500 hover:underline">v1</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Live risk badge — corner indicator -->
+  <div id="risk-badge" class="fixed top-4 right-4 z-50 bg-white border border-gray-200 shadow-lg rounded-xl p-3 w-72 hidden">
+    <div class="flex items-center justify-between mb-1">
+      <span id="risk-handle" class="text-xs text-gray-500">…</span>
+      <span id="risk-tier" class="text-[10px] font-bold px-2 py-0.5 rounded-full">…</span>
+    </div>
+    <div class="flex items-center gap-2 mb-2">
+      <div class="text-2xl font-bold tabular-nums" id="risk-score">0</div>
+      <div class="text-xs text-gray-500">/ 100 risk</div>
+    </div>
+    <div class="h-1.5 rounded-full bg-gray-100 overflow-hidden mb-2">
+      <div id="risk-bar" class="h-full transition-all" style="width: 0%; background: #10b981;"></div>
+    </div>
+    <div id="risk-breakdown" class="text-[11px] text-gray-600 leading-snug max-h-24 overflow-auto"></div>
+  </div>
+
+  <!-- Step-up overlay -->
+  <div id="stepup-overlay" class="fixed inset-0 bg-black/50 z-40 hidden flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-2xl p-6 w-96">
+      <div class="flex items-center gap-2 mb-3">
+        <div class="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-700">⚠</div>
+        <h3 class="text-lg font-semibold">Quick verification needed</h3>
+      </div>
+      <p class="text-sm text-gray-600 mb-4">Your session looks a little unusual. Please solve this to continue.</p>
+      <canvas id="stepup-canvas" width="280" height="60" class="border border-gray-200 rounded-lg mb-3"></canvas>
+      <input id="stepup-answer" type="text" inputmode="numeric" autocomplete="off"
+             class="w-full px-3 py-2 border border-gray-300 rounded-lg mb-3 text-lg" placeholder="Answer" />
+      <button id="stepup-submit" type="button"
+              class="w-full py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700">Verify</button>
+      <p id="stepup-status" class="text-xs text-center text-gray-500 mt-2">Take your time — minimum 2 seconds.</p>
+    </div>
+  </div>
+
+  <!-- Step indicator -->
+  <div class="max-w-4xl mx-auto px-6 pt-6">
+    <ol class="flex items-center gap-2 text-sm">
+      <li data-pip="1" class="flex items-center gap-2">
+        <span class="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs">1</span>
+        <span>Cart</span>
+      </li>
+      <li class="text-gray-300">—</li>
+      <li data-pip="2" class="flex items-center gap-2 text-gray-400">
+        <span class="w-6 h-6 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center text-xs">2</span>
+        <span>Shipping</span>
+      </li>
+      <li class="text-gray-300">—</li>
+      <li data-pip="3" class="flex items-center gap-2 text-gray-400">
+        <span class="w-6 h-6 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center text-xs">3</span>
+        <span>Review</span>
+      </li>
+    </ol>
+  </div>
+
+  <main class="max-w-4xl mx-auto px-6 py-6">
+
+    <!-- ========== STEP 1: CART ========== -->
+    <section data-step="1" class="bg-white rounded-xl border border-gray-200 p-6">
+      <h1 class="text-2xl font-semibold mb-1">Your Cart</h1>
+      <p class="text-sm text-gray-500 mb-4">Review your items below.</p>
+
+      <ul id="cart-items" class="divide-y divide-gray-100"></ul>
+
+      <div class="mt-4 text-sm text-gray-700 flex justify-between">
+        <span>Subtotal</span>
+        <canvas data-line="subtotal" width="100" height="20"></canvas>
+      </div>
+
+      <!-- Context-dependent challenge prompt -->
+      <div class="mt-6 border border-amber-200 bg-amber-50 rounded-lg p-3">
+        <p class="text-sm" id="step1-prompt">Loading…</p>
+        <p class="text-xs text-gray-500 mt-1">Tap an item above to continue.</p>
+      </div>
+
+      <!-- Decoy CTAs: visually loud, but they are TRAPS. -->
+      <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-3">
+        <button type="button" data-decoy="express"
+                class="py-4 rounded-xl font-semibold text-white shadow-lg
+                       bg-gradient-to-r from-purple-600 to-pink-600 hover:opacity-90
+                       text-lg flex items-center justify-center gap-2">
+          🚀 Express Checkout
+          <span class="text-xs bg-white/20 px-2 py-0.5 rounded">Recommended</span>
+        </button>
+        <button type="button" data-decoy="save"
+                class="py-4 rounded-xl font-semibold text-white shadow-lg
+                       bg-emerald-600 hover:bg-emerald-700
+                       text-lg flex items-center justify-center gap-2">
+          ⚡ Save & Continue Later
+        </button>
+      </div>
+
+      <!-- Honeypots -->
+      <div class="hp-field" aria-hidden="true">
+        <label>Confirm email <input id="hp-email" type="text" tabindex="-1" autocomplete="off" /></label>
+        <label>Promo code 2 <input id="hp-promo" type="text" tabindex="-1" autocomplete="off" /></label>
+      </div>
+    </section>
+
+    <!-- ========== STEP 2: SHIPPING ========== -->
+    <section data-step="2" hidden class="bg-white rounded-xl border border-gray-200 p-6">
+      <h1 class="text-2xl font-semibold mb-1">Choose shipping</h1>
+      <p class="text-sm text-gray-500 mb-4">Pick how you'd like your order delivered.</p>
+
+      <div class="border border-amber-200 bg-amber-50 rounded-lg p-3 mb-4">
+        <p class="text-sm" id="step2-prompt">Loading…</p>
+        <p class="text-xs text-gray-500 mt-1">Tap an option below.</p>
+      </div>
+
+      <div id="shipping-options" class="grid grid-cols-1 md:grid-cols-3 gap-3"></div>
+    </section>
+
+    <!-- ========== STEP 3: REVIEW & PAY ========== -->
+    <section data-step="3" hidden class="bg-white rounded-xl border border-gray-200 p-6">
+      <h1 class="text-2xl font-semibold mb-1">Review & pay</h1>
+      <p class="text-sm text-gray-500 mb-4">Confirm your order.</p>
+
+      <div id="order-summary" class="text-sm space-y-1 border border-gray-100 rounded-lg p-4 bg-gray-50"></div>
+
+      <div class="border border-amber-200 bg-amber-50 rounded-lg p-3 mt-6">
+        <p class="text-sm" id="step3-prompt">Loading…</p>
+      </div>
+
+      <div id="step3-buttons" class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 items-center"></div>
+    </section>
+
+    <p id="status" class="mt-6 text-sm text-center text-gray-500">Loading…</p>
+  </main>
+
+  <script src="/v2.min.js"></script>
+</body>
+</html>

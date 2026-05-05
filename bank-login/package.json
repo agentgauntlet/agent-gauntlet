@@ -1,0 +1,13 @@
+{
+  "name": "bank-login-bot-block",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Anti-agent bank login — credential-stuffing detection, OTP canvas, keystroke timing, semantic ambiguity.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

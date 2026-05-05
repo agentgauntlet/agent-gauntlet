@@ -1,0 +1,46 @@
+version: '3.9'
+
+services:
+  cart-checkout:
+    build:
+      context: ./cart-checkout
+      dockerfile: ../Dockerfile.scenario
+    ports:
+      - "3000:3000"
+      - "3443:3443"
+    volumes:
+      - cart-data:/app/.data
+    environment:
+      PORT: 3000
+      HTTPS_PORT: 3443
+
+  payment-checkout:
+    build:
+      context: ./payment-checkout
+      dockerfile: ../Dockerfile.scenario
+    ports:
+      - "3001:3001"
+      - "3444:3444"
+    volumes:
+      - payment-data:/app/.data
+    environment:
+      PORT: 3001
+      HTTPS_PORT: 3444
+
+  bank-login:
+    build:
+      context: ./bank-login
+      dockerfile: ../Dockerfile.scenario
+    ports:
+      - "3002:3002"
+      - "3445:3445"
+    volumes:
+      - bank-data:/app/.data
+    environment:
+      PORT: 3002
+      HTTPS_PORT: 3445
+
+volumes:
+  cart-data:
+  payment-data:
+  bank-data:

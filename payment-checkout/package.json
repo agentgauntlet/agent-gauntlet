@@ -1,0 +1,13 @@
+{
+  "name": "payment-checkout-bot-block",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Anti-agent payment form — keystroke timing, Luhn-aware challenges, inverted-hierarchy authorization.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

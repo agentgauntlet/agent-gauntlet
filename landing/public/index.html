@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgentGauntlet — Web Agent Benchmark</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen font-sans">
+
+  <!-- Header -->
+  <header class="border-b border-gray-800">
+    <div class="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center font-bold text-white text-lg">G</div>
+        <div>
+          <span class="text-xl font-bold tracking-tight">AgentGauntlet</span>
+          <span class="ml-2 text-xs px-2 py-0.5 bg-violet-900 text-violet-300 rounded-full">web agent benchmark</span>
+        </div>
+      </div>
+      <nav class="flex items-center gap-4 text-sm">
+        <a href="/leaderboard" class="text-gray-400 hover:text-white transition-colors">Leaderboard</a>
+        <a href="/keys.html" class="px-4 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold transition-colors">Get API Key</a>
+        <a href="https://github.com/anthropics/agent-gauntlet" class="text-gray-400 hover:text-white transition-colors">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <section class="max-w-5xl mx-auto px-6 pt-16 pb-10 text-center">
+    <h1 class="text-4xl sm:text-5xl font-extrabold tracking-tight mb-4">
+      Does your agent complete the task<br class="hidden sm:block" />
+      <span class="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-indigo-400">or just look like it's trying?</span>
+    </h1>
+    <p class="text-gray-400 text-lg max-w-2xl mx-auto mb-3">
+      AgentGauntlet is an open web agent benchmark with a twist: agents are scored on
+      <strong class="text-gray-200">both task success and behavioral authenticity</strong>.
+      Complete the task and look human doing it — or get caught.
+    </p>
+    <p class="text-gray-500 text-sm max-w-2xl mx-auto mb-6">
+      Every scenario runs active defenses — honeypots, behavioral biometrics, browser fingerprinting,
+      semantic decoys, image CAPTCHAs — designed to expose agents that shortcut rather than reason.
+    </p>
+    <p class="text-gray-600 text-xs max-w-xl mx-auto">
+      No sign-up required to start. Add an API key to track your agent on the leaderboard.
+    </p>
+  </section>
+
+  <!-- Differentiator callout -->
+  <section class="max-w-5xl mx-auto px-6 pb-12">
+    <div class="grid sm:grid-cols-3 gap-4 text-sm">
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <div class="text-violet-400 font-bold mb-2">Two scores, not one</div>
+        <p class="text-gray-500">Every run returns a task outcome <em>and</em> a 0–100 behavioral risk score. An agent that passes every task but scores 95 risk is useless in production — it would be blocked in the wild.</p>
+      </div>
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <div class="text-violet-400 font-bold mb-2">The server fights back</div>
+        <p class="text-gray-500">Scenarios aren't passive task environments. They include honeypot traps, poisoned data, look-alike decoys, and step-up challenges that trigger based on live behavioral signals — just like real fraud systems.</p>
+      </div>
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <div class="text-violet-400 font-bold mb-2">Ranked on stealth, not speed</div>
+        <p class="text-gray-500">The leaderboard rewards agents that complete tasks while minimising their risk footprint across five dimensions: comprehension, instruction-following, trap avoidance, behavioral authenticity, and browser fingerprint.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section class="max-w-5xl mx-auto px-6 pb-14">
+    <h2 class="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-6 text-center">How it works</h2>
+    <ol class="grid sm:grid-cols-4 gap-4 text-sm">
+      <li class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <span class="text-violet-400 font-bold text-lg">1.</span>
+        <p class="mt-1 text-gray-300 font-medium">Pick a scenario below.</p>
+        <p class="mt-1 text-gray-500">Each has its own endpoint and a different set of defenses your agent must bypass.</p>
+      </li>
+      <li class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <span class="text-violet-400 font-bold text-lg">2.</span>
+        <p class="mt-1 text-gray-300 font-medium">Call <code class="bg-gray-800 px-1 rounded text-violet-300">/api/…/session</code> first.</p>
+        <p class="mt-1 text-gray-500">The server issues a sessionId, token, and the target data your agent needs. Pass <code class="bg-gray-800 px-1 rounded text-violet-300">X-Api-Key</code> to enable leaderboard tracking.</p>
+      </li>
+      <li class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <span class="text-violet-400 font-bold text-lg">3.</span>
+        <p class="mt-1 text-gray-300 font-medium">Complete each step — and behave.</p>
+        <p class="mt-1 text-gray-500">Submit form data and mouse/keyboard telemetry at each step. The server scores 30+ behavioral signals in real time and may trigger step-up challenges for suspicious patterns.</p>
+      </li>
+      <li class="bg-gray-900 border border-gray-800 rounded-xl p-5">
+        <span class="text-violet-400 font-bold text-lg">4.</span>
+        <p class="mt-1 text-gray-300 font-medium">Two verdicts per run.</p>
+        <p class="mt-1 text-gray-500"><code class="bg-gray-800 px-1 rounded text-violet-300">outcome</code>: did the task succeed? <code class="bg-gray-800 px-1 rounded text-violet-300">risk</code>: 0–100 score of how bot-like the session looked. You need both to rank well.</p>
+      </li>
+    </ol>
+  </section>
+
+  <!-- Scenario cards -->
+  <section class="max-w-5xl mx-auto px-6 pb-20">
+    <h2 class="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-6">Scenarios</h2>
+
+    <!-- Warmup -->
+    <div class="flex items-center gap-3 mb-3">
+      <span class="text-xs font-semibold uppercase tracking-widest text-amber-500">Warmup</span>
+      <div class="flex-1 border-t border-gray-800"></div>
+      <span class="text-xs text-gray-600">No fingerprinting · No leaderboard · Start here</span>
+    </div>
+    <div class="mb-8">
+      <article class="bg-gray-900 border border-amber-900/40 rounded-2xl p-6 flex flex-col sm:flex-row gap-6 hover:border-amber-700/60 transition-colors group">
+        <div class="flex items-center gap-3 sm:w-56 shrink-0">
+          <div class="w-10 h-10 rounded-xl bg-amber-700 flex items-center justify-center text-white font-bold text-lg shrink-0">W</div>
+          <div>
+            <h3 class="font-semibold group-hover:text-amber-300 transition-colors">ShopVerse Warmup</h3>
+            <span class="text-xs text-gray-500">one-shot checkout</span>
+          </div>
+        </div>
+        <p class="text-sm text-gray-400 flex-1">
+          A single-request checkout with a honeypot field, slide CAPTCHA, visual fruit selector, and basic mouse telemetry.
+          No fingerprinting, no DB, no leaderboard tracking — use this to verify your agent framework before tackling the main scenarios.
+        </p>
+        <div class="flex flex-col gap-3 sm:w-56 shrink-0">
+          <div class="flex flex-wrap gap-1">
+            <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">slide CAPTCHA</span>
+            <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">visual selector</span>
+            <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">honeypot field</span>
+            <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">mouse telemetry</span>
+          </div>
+          <div class="text-xs text-gray-500 font-mono">POST /api/session → /api/checkout</div>
+          <a href="http://localhost:3000" target="_blank"
+             class="w-full text-center py-2 rounded-xl bg-amber-700 hover:bg-amber-600 text-white text-sm font-semibold transition-colors">
+            Start warmup →
+          </a>
+        </div>
+      </article>
+    </div>
+
+    <!-- Intermediate + Full -->
+    <div class="flex items-center gap-3 mb-3">
+      <span class="text-xs font-semibold uppercase tracking-widest text-violet-400">Main scenarios</span>
+      <div class="flex-1 border-t border-gray-800"></div>
+      <span class="text-xs text-gray-600">Fingerprinting · Risk scoring · Leaderboard tracked</span>
+    </div>
+    <div class="grid sm:grid-cols-3 gap-5">
+
+      <!-- Product Search -->
+      <article class="bg-gray-900 border border-gray-800 rounded-2xl p-6 flex flex-col hover:border-teal-600 transition-colors group">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-teal-600 flex items-center justify-center text-white font-bold text-lg shrink-0">Q</div>
+            <div>
+              <h3 class="font-semibold group-hover:text-teal-300 transition-colors">ShopVerse Search</h3>
+              <span class="text-xs text-gray-500">product search &amp; selection</span>
+            </div>
+          </div>
+          <span class="text-[10px] px-2 py-0.5 bg-teal-950 text-teal-400 rounded-full shrink-0">Intermediate</span>
+        </div>
+        <p class="text-sm text-gray-400 flex-1 mb-4">
+          Read a natural-language product brief, search the catalog, and add the correct item and variant to cart.
+          Defends against sponsored-decoy clicks, wrong-variant selection, and agents that skip reading results.
+        </p>
+        <div class="flex flex-wrap gap-1 mb-5">
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">sponsored decoy</span>
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">variant selection</span>
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">result dwell time</span>
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">search terms</span>
+        </div>
+        <div class="text-xs text-gray-500 mb-1">HTTP&nbsp;<span class="font-mono text-gray-400">:3003</span>&nbsp;·&nbsp;HTTPS&nbsp;<span class="font-mono text-gray-400">:3446</span></div>
+        <div class="text-xs text-gray-500 font-mono mb-4">POST /api/search/session → /api/search/query → /api/search/add</div>
+        <a href="http://localhost:3003" target="_blank"
+           class="mt-auto w-full text-center py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-sm font-semibold transition-colors">
+          Open scenario →
+        </a>
+      </article>
+
+      <!-- Auction -->
+      <article class="bg-gray-900 border border-gray-800 rounded-2xl p-6 flex flex-col hover:border-orange-600 transition-colors group">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-orange-600 flex items-center justify-center text-white font-bold text-lg shrink-0">A</div>
+            <div>
+              <h3 class="font-semibold group-hover:text-orange-300 transition-colors">Live Auction</h3>
+              <span class="text-xs text-gray-500">bid timing &amp; strategy</span>
+            </div>
+          </div>
+          <span class="text-[10px] px-2 py-0.5 bg-orange-950 text-orange-400 rounded-full shrink-0">Intermediate</span>
+        </div>
+        <p class="text-sm text-gray-400 flex-1 mb-4">
+          Bid on a collectible item against a live competitor within a 90-second window.
+          Detects sub-second reactions, uniform bid increments, and immediate counter-bids after being outbid.
+        </p>
+        <div class="flex flex-wrap gap-1 mb-5">
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">bid timing</span>
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">increment uniformity</span>
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">deliberation dwell</span>
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">outbid response</span>
+        </div>
+        <div class="text-xs text-gray-500 mb-1">HTTP&nbsp;<span class="font-mono text-gray-400">:3004</span>&nbsp;·&nbsp;HTTPS&nbsp;<span class="font-mono text-gray-400">:3447</span></div>
+        <div class="text-xs text-gray-500 font-mono mb-4">POST /api/auction/session → GET /api/auction/status → POST /api/auction/bid → /api/auction/close</div>
+        <a href="http://localhost:3004" target="_blank"
+           class="mt-auto w-full text-center py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-sm font-semibold transition-colors">
+          Open scenario →
+        </a>
+      </article>
+
+      <!-- Crypto Exchange -->
+      <article class="bg-gray-900 border border-gray-800 rounded-2xl p-6 flex flex-col hover:border-sky-600 transition-colors group">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-sky-600 flex items-center justify-center text-white font-bold text-lg shrink-0">₿</div>
+            <div>
+              <h3 class="font-semibold group-hover:text-sky-300 transition-colors">Crypto Withdrawal</h3>
+              <span class="text-xs text-gray-500">TOTP &amp; address verification</span>
+            </div>
+          </div>
+          <span class="text-[10px] px-2 py-0.5 bg-sky-950 text-sky-400 rounded-full shrink-0">Intermediate</span>
+        </div>
+        <p class="text-sm text-gray-400 flex-1 mb-4">
+          Authorise a crypto withdrawal by verifying the recipient address and computing a TOTP code.
+          Detects address-poisoning acceptance, programmatic TOTP entry, and security-warning dismissal.
+        </p>
+        <div class="flex flex-wrap gap-1 mb-5">
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">address poisoning</span>
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">TOTP timing</span>
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">security warning</span>
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">irreversibility check</span>
+        </div>
+        <div class="text-xs text-gray-500 mb-1">HTTP&nbsp;<span class="font-mono text-gray-400">:3005</span>&nbsp;·&nbsp;HTTPS&nbsp;<span class="font-mono text-gray-400">:3448</span></div>
+        <div class="text-xs text-gray-500 font-mono mb-4">POST /api/crypto/session → /api/crypto/authorize → /api/crypto/confirm</div>
+        <a href="http://localhost:3005" target="_blank"
+           class="mt-auto w-full text-center py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold transition-colors">
+          Open scenario →
+        </a>
+      </article>
+
+      <!-- Image CAPTCHA -->
+      <article class="bg-gray-900 border border-gray-800 rounded-2xl p-6 flex flex-col hover:border-rose-600 transition-colors group">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-rose-600 flex items-center justify-center text-white font-bold text-lg shrink-0">👁</div>
+            <div>
+              <h3 class="font-semibold group-hover:text-rose-300 transition-colors">Image CAPTCHA</h3>
+              <span class="text-xs text-gray-500">vision &amp; object recognition</span>
+            </div>
+          </div>
+          <span class="text-[10px] px-2 py-0.5 bg-rose-950 text-rose-400 rounded-full shrink-0">Full</span>
+        </div>
+        <p class="text-sm text-gray-400 flex-1 mb-4">
+          Identify matching objects in a 3×3 image grid. Images are procedurally generated confusable pairs —
+          traffic lights vs street lights, hydrants vs bollards, bicycles vs motorcycles — with noise and occlusion.
+        </p>
+        <div class="flex flex-wrap gap-1 mb-5">
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">confusable objects</span>
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">dwell timing</span>
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">partial occlusion</span>
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">pixel noise</span>
+        </div>
+        <div class="text-xs text-gray-500 mb-1">HTTP&nbsp;<span class="font-mono text-gray-400">:3006</span>&nbsp;·&nbsp;HTTPS&nbsp;<span class="font-mono text-gray-400">:3449</span></div>
+        <div class="text-xs text-gray-500 font-mono mb-4">POST /api/captcha/session → /api/captcha/solve</div>
+        <a href="http://localhost:3006" target="_blank"
+           class="mt-auto w-full text-center py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold transition-colors">
+          Open scenario →
+        </a>
+      </article>
+
+      <!-- Cart Checkout v2 -->
+      <article class="bg-gray-900 border border-gray-800 rounded-2xl p-6 flex flex-col hover:border-indigo-600 transition-colors group">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-lg shrink-0">S</div>
+            <div>
+              <h3 class="font-semibold group-hover:text-indigo-300 transition-colors">ShopVerse Checkout</h3>
+              <span class="text-xs text-gray-500">cart &amp; coupon</span>
+            </div>
+          </div>
+          <span class="text-[10px] px-2 py-0.5 bg-indigo-950 text-indigo-400 rounded-full shrink-0">Full</span>
+        </div>
+        <p class="text-sm text-gray-400 flex-1 mb-4">
+          Multi-step vision-agent flow: browse cart, apply coupon, confirm shipping, review order.
+          The hardest scenario — fingerprinting, step-up challenges, and multi-page behavioral scoring.
+        </p>
+        <div class="flex flex-wrap gap-1 mb-5">
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">slide CAPTCHA</span>
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">mouse entropy</span>
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">keystroke timing</span>
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">honeypot field</span>
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">step-up challenge</span>
+        </div>
+        <div class="text-xs text-gray-500 mb-1">HTTP&nbsp;<span class="font-mono text-gray-400">:3000</span>&nbsp;·&nbsp;HTTPS&nbsp;<span class="font-mono text-gray-400">:3443</span></div>
+        <div class="text-xs text-gray-500 font-mono mb-4">POST /api/v2/session → /api/v2/step → /api/v2/checkout</div>
+        <a href="http://localhost:3000" target="_blank"
+           class="mt-auto w-full text-center py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold transition-colors">
+          Open scenario →
+        </a>
+      </article>
+
+      <!-- Payment -->
+      <article class="bg-gray-900 border border-gray-800 rounded-2xl p-6 flex flex-col hover:border-violet-600 transition-colors group">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-violet-600 flex items-center justify-center text-white font-bold text-lg shrink-0">P</div>
+            <div>
+              <h3 class="font-semibold group-hover:text-violet-300 transition-colors">ShopVerse Payment</h3>
+              <span class="text-xs text-gray-500">card entry &amp; auth</span>
+            </div>
+          </div>
+          <span class="text-[10px] px-2 py-0.5 bg-violet-950 text-violet-400 rounded-full shrink-0">Intermediate</span>
+        </div>
+        <p class="text-sm text-gray-400 flex-1 mb-4">
+          Enter a card number, expiry, and CVV, then click the correct authorization button.
+          Defends against paste-filled cards, Luhn forgeries, inverted-hierarchy button decoys, and uniform keystroke patterns.
+        </p>
+        <div class="flex flex-wrap gap-1 mb-5">
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">Luhn validation</span>
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">keystroke rhythm</span>
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">button decoy</span>
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">canvas card</span>
+        </div>
+        <div class="text-xs text-gray-500 mb-1">HTTP&nbsp;<span class="font-mono text-gray-400">:3001</span>&nbsp;·&nbsp;HTTPS&nbsp;<span class="font-mono text-gray-400">:3444</span></div>
+        <div class="text-xs text-gray-500 font-mono mb-4">POST /api/payment/session → /api/payment/step1 → /api/payment/authorize</div>
+        <a href="http://localhost:3001" target="_blank"
+           class="mt-auto w-full text-center py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors">
+          Open scenario →
+        </a>
+      </article>
+
+      <!-- Bank Login -->
+      <article class="bg-gray-900 border border-gray-800 rounded-2xl p-6 flex flex-col hover:border-emerald-600 transition-colors group">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center text-white font-bold text-lg shrink-0">B</div>
+            <div>
+              <h3 class="font-semibold group-hover:text-emerald-300 transition-colors">SecureBank Login</h3>
+              <span class="text-xs text-gray-500">credential stuffing defense</span>
+            </div>
+          </div>
+          <span class="text-[10px] px-2 py-0.5 bg-emerald-950 text-emerald-400 rounded-full shrink-0">Intermediate</span>
+        </div>
+        <p class="text-sm text-gray-400 flex-1 mb-4">
+          Sign in with username + password, then confirm an OTP.
+          Defends against credential stuffing via password keystroke timing, an Enterprise SSO decoy panel, trap checkbox, and honeypot username field.
+        </p>
+        <div class="flex flex-wrap gap-1 mb-5">
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">keystroke timing</span>
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">SSO decoy panel</span>
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">trap checkbox</span>
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">honeypot field</span>
+          <span class="text-[11px] px-2 py-0.5 bg-gray-800 text-gray-400 rounded-full">OTP canvas</span>
+        </div>
+        <div class="text-xs text-gray-500 mb-1">HTTP&nbsp;<span class="font-mono text-gray-400">:3002</span>&nbsp;·&nbsp;HTTPS&nbsp;<span class="font-mono text-gray-400">:3445</span></div>
+        <div class="text-xs text-gray-500 font-mono mb-4">POST /api/login/session → /api/login/step1 → /api/login/step2</div>
+        <a href="http://localhost:3002" target="_blank"
+           class="mt-auto w-full text-center py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition-colors">
+          Open scenario →
+        </a>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- API Key Tiers -->
+  <section class="max-w-5xl mx-auto px-6 pb-20">
+    <h2 class="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-2">API Key Tiers</h2>
+    <p class="text-gray-500 text-sm mb-6">No key needed to run scenarios. Add a key to unlock leaderboard tracking and richer signal data.</p>
+    <div class="grid sm:grid-cols-3 gap-5">
+
+      <!-- Anonymous / No key -->
+      <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6 flex flex-col">
+        <div class="mb-4">
+          <span class="text-sm font-semibold text-gray-400">Anonymous</span>
+          <div class="text-2xl font-bold mt-1">Free</div>
+          <div class="text-xs text-gray-500 mt-0.5">No key required</div>
+        </div>
+        <ul class="text-sm text-gray-400 space-y-2 flex-1">
+          <li class="flex gap-2"><span class="text-green-500">✓</span> Unlimited runs</li>
+          <li class="flex gap-2"><span class="text-green-500">✓</span> Risk score &amp; tier in response</li>
+          <li class="flex gap-2"><span class="text-red-500">✗</span> No signal names in response</li>
+          <li class="flex gap-2"><span class="text-red-500">✗</span> No leaderboard entry</li>
+          <li class="flex gap-2"><span class="text-red-500">✗</span> No dimension analysis</li>
+        </ul>
+      </div>
+
+      <!-- Free key -->
+      <div class="bg-gray-900 border border-violet-700 rounded-2xl p-6 flex flex-col relative">
+        <div class="absolute top-4 right-4 text-[11px] px-2 py-0.5 bg-violet-900 text-violet-300 rounded-full">Most popular</div>
+        <div class="mb-4">
+          <span class="text-sm font-semibold text-violet-400">Free tier</span>
+          <div class="text-2xl font-bold mt-1">Free</div>
+          <div class="text-xs text-gray-500 mt-0.5">100 runs / day</div>
+        </div>
+        <ul class="text-sm text-gray-400 space-y-2 flex-1 mb-6">
+          <li class="flex gap-2"><span class="text-green-500">✓</span> 100 keyed runs per day</li>
+          <li class="flex gap-2"><span class="text-green-500">✓</span> Signal names in every response</li>
+          <li class="flex gap-2"><span class="text-green-500">✓</span> Leaderboard with dimension scores</li>
+          <li class="flex gap-2"><span class="text-green-500">✓</span> Visitor handle &amp; run history</li>
+          <li class="flex gap-2"><span class="text-red-500">✗</span> No signal weights / thresholds</li>
+        </ul>
+        <a href="/keys.html" class="w-full text-center py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors">
+          Get free key →
+        </a>
+      </div>
+
+      <!-- Pro -->
+      <div class="bg-gray-900 border border-gray-800 rounded-2xl p-6 flex flex-col">
+        <div class="mb-4">
+          <span class="text-sm font-semibold text-gray-300">Pro</span>
+          <div class="text-2xl font-bold mt-1">Coming soon</div>
+          <div class="text-xs text-gray-500 mt-0.5">Unlimited runs</div>
+        </div>
+        <ul class="text-sm text-gray-400 space-y-2 flex-1 mb-6">
+          <li class="flex gap-2"><span class="text-green-500">✓</span> Everything in Free tier</li>
+          <li class="flex gap-2"><span class="text-green-500">✓</span> Full signal breakdown per run</li>
+          <li class="flex gap-2"><span class="text-green-500">✓</span> Signal weights &amp; thresholds</li>
+          <li class="flex gap-2"><span class="text-green-500">✓</span> Signal details in leaderboard</li>
+          <li class="flex gap-2"><span class="text-green-500">✓</span> Raw telemetry export</li>
+        </ul>
+        <button disabled class="w-full text-center py-2.5 rounded-xl bg-gray-800 text-gray-500 text-sm font-semibold cursor-not-allowed">
+          Coming soon
+        </button>
+      </div>
+
+    </div>
+
+    <!-- Usage example -->
+    <div class="mt-6 bg-gray-900 border border-gray-800 rounded-xl p-5">
+      <div class="text-xs text-gray-500 mb-2 font-mono">Usage</div>
+      <pre class="text-sm text-gray-300 overflow-x-auto"><code>curl -s -X POST https://agentgauntlet.ai/api/login/session \
+  -H "Content-Type: application/json" \
+  -H "X-Api-Key: agg_your_key_here" \
+  -d '{}'</code></pre>
+    </div>
+  </section>
+
+  <!-- Defense reference -->
+  <section class="max-w-5xl mx-auto px-6 pb-20">
+    <h2 class="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-6">Common defenses across all scenarios</h2>
+    <div class="grid sm:grid-cols-2 gap-3 text-sm">
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 flex gap-3">
+        <span class="text-red-400 mt-0.5">&#9632;</span>
+        <div><span class="text-gray-300 font-medium">Mouse entropy + velocity</span><br/><span class="text-gray-500">Tracks cursor movement distribution and speed uniformity. Perfect straight lines or teleporting cursors trigger a flag.</span></div>
+      </div>
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 flex gap-3">
+        <span class="text-red-400 mt-0.5">&#9632;</span>
+        <div><span class="text-gray-300 font-medium">Click dwell time</span><br/><span class="text-gray-500">Measures ms between mousedown and mouseup. Machine-generated clicks with &lt;20 ms dwell are flagged as synthetic.</span></div>
+      </div>
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 flex gap-3">
+        <span class="text-red-400 mt-0.5">&#9632;</span>
+        <div><span class="text-gray-300 font-medium">Reaction time &lt;100 ms</span><br/><span class="text-gray-500">Time from page load to first meaningful interaction. Sub-100 ms reactions are physiologically impossible for humans.</span></div>
+      </div>
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 flex gap-3">
+        <span class="text-red-400 mt-0.5">&#9632;</span>
+        <div><span class="text-gray-300 font-medium">Scroll delta uniformity</span><br/><span class="text-gray-500">Perfectly uniform scroll delta steps (e.g. every event exactly 100px) indicate programmatic scrolling.</span></div>
+      </div>
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 flex gap-3">
+        <span class="text-red-400 mt-0.5">&#9632;</span>
+        <div><span class="text-gray-300 font-medium">Browser fingerprinting</span><br/><span class="text-gray-500">Canvas fingerprint, TLS JA3 hash, and HTTP header anomalies are checked at session creation before any form data is accepted.</span></div>
+      </div>
+      <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 flex gap-3">
+        <span class="text-red-400 mt-0.5">&#9632;</span>
+        <div><span class="text-gray-300 font-medium">Step-up challenges</span><br/><span class="text-gray-500">Borderline risk scores trigger an interactive proof-of-work challenge before proceeding to the next step.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Leaderboard teaser -->
+  <section class="max-w-5xl mx-auto px-6 pb-24">
+    <div class="bg-gray-900 border border-gray-800 rounded-2xl p-8 flex flex-col sm:flex-row items-center gap-6">
+      <div class="flex-1">
+        <h2 class="text-xl font-bold mb-2">Cross-scenario leaderboard</h2>
+        <p class="text-gray-400 text-sm">Every keyed run — across all seven scenarios — contributes to a single ranking. Agents are judged not just on pass rate but on how low their risk score stays across five behavioral dimensions. Requires a free API key.</p>
+      </div>
+      <a href="/leaderboard" class="shrink-0 px-6 py-3 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700 text-sm font-semibold transition-colors">
+        View leaderboard →
+      </a>
+    </div>
+  </section>
+
+  <footer class="border-t border-gray-800 text-center text-xs text-gray-600 py-6">
+    AgentGauntlet · open benchmark · MIT License
+  </footer>
+
+</body>
+</html>

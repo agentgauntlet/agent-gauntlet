@@ -1,0 +1,13 @@
+{
+  "name": "cart-checkout-bot-block",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Anti-agent shopping cart checkout — visual + interaction + semantic challenges with server-side scoring.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

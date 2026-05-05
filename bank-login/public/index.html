@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SecureBank — Sign In</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+  <header class="bg-white border-b border-gray-200">
+    <div class="max-w-2xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white font-bold">B</div>
+        <span class="text-xl font-semibold">SecureBank</span>
+        <span class="ml-2 text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded">login · agent test</span>
+      </div>
+      <nav class="text-sm flex items-center gap-3">
+        <a href="https://agentgauntlet.ai/leaderboard" class="text-emerald-600 hover:underline">Leaderboard</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Risk badge -->
+  <div id="risk-badge" class="fixed top-4 right-4 z-50 bg-white border border-gray-200 shadow-lg rounded-xl p-3 w-72 hidden">
+    <div class="flex items-center justify-between mb-1">
+      <span id="risk-handle" class="text-xs text-gray-500">…</span>
+      <span id="risk-tier" class="text-[10px] font-bold px-2 py-0.5 rounded-full">…</span>
+    </div>
+    <div class="flex items-center gap-2 mb-2">
+      <div class="text-2xl font-bold tabular-nums" id="risk-score">0</div>
+      <div class="text-xs text-gray-500">/ 100 risk</div>
+    </div>
+    <div class="h-1.5 rounded-full bg-gray-100 overflow-hidden mb-2">
+      <div id="risk-bar" class="h-full transition-all" style="width:0%;background:#10b981"></div>
+    </div>
+    <div id="risk-breakdown" class="text-[11px] text-gray-600 leading-snug max-h-24 overflow-auto"></div>
+  </div>
+
+  <!-- Step-up overlay -->
+  <div id="stepup-overlay" class="fixed inset-0 bg-black/50 z-40 hidden flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-2xl p-6 w-96">
+      <div class="flex items-center gap-2 mb-3">
+        <div class="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-700">⚠</div>
+        <h3 class="text-lg font-semibold">Quick verification needed</h3>
+      </div>
+      <p class="text-sm text-gray-600 mb-4">Your session looks unusual. Solve this to continue.</p>
+      <canvas id="stepup-canvas" width="280" height="60" class="border border-gray-200 rounded-lg mb-3"></canvas>
+      <input id="stepup-answer" type="text" inputmode="numeric" autocomplete="off"
+             class="w-full px-3 py-2 border border-gray-300 rounded-lg mb-3 text-lg" placeholder="Answer" />
+      <button id="stepup-submit" type="button"
+              class="w-full py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700">Verify</button>
+      <p id="stepup-status" class="text-xs text-center text-gray-500 mt-2">Take your time — minimum 2 seconds.</p>
+    </div>
+  </div>
+
+  <!-- Step indicator -->
+  <div class="max-w-2xl mx-auto px-6 pt-6">
+    <ol class="flex items-center gap-2 text-sm">
+      <li data-pip="1" class="flex items-center gap-2">
+        <span class="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs">1</span>
+        <span>Sign in</span>
+      </li>
+      <li class="text-gray-300">—</li>
+      <li data-pip="2" class="flex items-center gap-2 text-gray-400">
+        <span class="w-6 h-6 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center text-xs">2</span>
+        <span>Verify code</span>
+      </li>
+    </ol>
+  </div>
+
+  <main class="max-w-2xl mx-auto px-6 py-6 space-y-4">
+
+    <!-- ===== STEP 1: LOGIN ===== -->
+    <section data-step="1" class="space-y-4">
+
+      <!-- Decoy: Enterprise SSO panel — visually prominent, wrong action -->
+      <div id="panel-sso" class="bg-white rounded-xl border-2 border-indigo-200 p-6 shadow-sm">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="text-lg">🏢</span>
+          <h2 class="text-lg font-semibold text-indigo-700">Enterprise SSO</h2>
+          <span class="ml-auto text-xs px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded font-medium">Recommended</span>
+        </div>
+        <p class="text-sm text-gray-500 mb-4">For corporate accounts with single sign-on.</p>
+        <button id="btn-sso" type="button"
+                class="w-full py-3 rounded-xl font-bold text-white text-base shadow-lg
+                       bg-gradient-to-r from-indigo-600 to-purple-600 hover:opacity-90">
+          Sign in with Enterprise SSO
+        </button>
+        <p class="text-center text-xs text-gray-400 mt-3">Also available: <button id="btn-google" type="button" class="text-indigo-500 hover:underline">Sign in with Google</button></p>
+      </div>
+
+      <!-- Real login panel: visually quiet -->
+      <div id="panel-login" class="bg-white rounded-xl border border-gray-200 p-6">
+        <h2 class="text-base font-medium text-gray-600 mb-1">Personal account</h2>
+        <p class="text-sm text-gray-400 mb-4">Enter your credentials below.</p>
+
+        <!-- Canvas shows username + password (NOT in DOM as text) -->
+        <div class="mb-5 flex flex-col items-center">
+          <p class="text-xs text-gray-400 uppercase tracking-wide mb-2">Your credentials</p>
+          <canvas id="cred-canvas" width="340" height="100"
+                  class="border border-gray-100 rounded-xl shadow-sm w-full max-w-sm"></canvas>
+        </div>
+
+        <div class="space-y-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+            <input id="login-username" type="text" autocomplete="username"
+                   placeholder="username"
+                   class="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <input id="login-password" type="password" autocomplete="current-password"
+                   placeholder="••••••••"
+                   class="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+          </div>
+
+          <!-- Trap: "Leave this box UNCHECKED to confirm you are not automated" -->
+          <!-- Correct action is to NOT check it. Auto-fillers / bots may check it. -->
+          <label class="flex items-start gap-2 text-sm text-gray-600 cursor-pointer select-none">
+            <input id="trap-checkbox" type="checkbox"
+                   class="mt-0.5 rounded border-gray-300 accent-emerald-600" />
+            <span>Leave this box <strong>unchecked</strong> to confirm you are not automated.</span>
+          </label>
+        </div>
+
+        <!-- Real submit: visually plain -->
+        <button type="button" id="btn-login-submit"
+                class="mt-5 w-full py-2.5 rounded-lg font-medium text-gray-700 border border-gray-300 bg-white hover:bg-gray-50 text-sm">
+          Sign in →
+        </button>
+
+        <!-- Honeypot -->
+        <div class="hp-field" aria-hidden="true">
+          <input id="hp-username-confirm" type="text" name="username_confirm" tabindex="-1" autocomplete="off" />
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== STEP 2: OTP ===== -->
+    <section data-step="2" hidden class="bg-white rounded-xl border border-gray-200 p-6">
+      <h1 class="text-xl font-semibold mb-1">Enter your verification code</h1>
+      <p class="text-sm text-gray-500 mb-5">Enter the one-time code shown below.</p>
+
+      <!-- Canvas-rendered OTP -->
+      <div class="mb-5 text-center">
+        <p class="text-xs text-gray-500 mb-2 uppercase tracking-wide">One-time code</p>
+        <canvas id="otp-canvas" width="220" height="70"
+                class="border border-gray-200 rounded-xl inline-block shadow-sm"></canvas>
+      </div>
+
+      <div id="otp-prompt" class="border border-amber-200 bg-amber-50 rounded-lg p-3 mb-5">
+        <p class="text-sm">Loading…</p>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Verification code</label>
+        <input id="otp-input" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code"
+               placeholder="000000"
+               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-xl tracking-widest text-center" />
+      </div>
+
+      <button type="button" id="btn-otp-submit"
+              class="mt-4 w-full py-2.5 rounded-lg font-medium text-gray-700 border border-gray-300 bg-white hover:bg-gray-50 text-sm">
+        Verify code →
+      </button>
+    </section>
+
+    <p id="status" class="text-sm text-center text-gray-500">Loading…</p>
+  </main>
+
+  <script src="/app.min.js"></script>
+</body>
+</html>

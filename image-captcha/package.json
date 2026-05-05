@@ -1,0 +1,9 @@
+{
+  "name": "image-captcha",
+  "version": "1.0.0",
+  "main": "server.js",
+  "dependencies": {
+    "dotenv": "*",
+    "express": "*"
+  }
+}

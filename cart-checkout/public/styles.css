@@ -1,0 +1,16 @@
+/* Honeypot field: invisible to humans, present in DOM for naive form-fillers. */
+.hp-field {
+  position: absolute;
+  left: -9999px;
+  top: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+}
+
+/* Slight selection-disable on the slide widget so dragging feels right. */
+#slide-track, #slide-handle, #slide-fill {
+  user-select: none;
+  -webkit-user-select: none;
+}

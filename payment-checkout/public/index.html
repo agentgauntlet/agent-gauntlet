@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ShopVerse — Payment</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+  <header class="bg-white border-b border-gray-200">
+    <div class="max-w-2xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold">S</div>
+        <span class="text-xl font-semibold">ShopVerse</span>
+        <span class="ml-2 text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded">payment · agent test</span>
+      </div>
+      <nav class="text-sm flex items-center gap-3">
+        <a href="https://agentgauntlet.ai/leaderboard" class="text-indigo-600 hover:underline">Leaderboard</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Risk badge -->
+  <div id="risk-badge" class="fixed top-4 right-4 z-50 bg-white border border-gray-200 shadow-lg rounded-xl p-3 w-72 hidden">
+    <div class="flex items-center justify-between mb-1">
+      <span id="risk-handle" class="text-xs text-gray-500">…</span>
+      <span id="risk-tier" class="text-[10px] font-bold px-2 py-0.5 rounded-full">…</span>
+    </div>
+    <div class="flex items-center gap-2 mb-2">
+      <div class="text-2xl font-bold tabular-nums" id="risk-score">0</div>
+      <div class="text-xs text-gray-500">/ 100 risk</div>
+    </div>
+    <div class="h-1.5 rounded-full bg-gray-100 overflow-hidden mb-2">
+      <div id="risk-bar" class="h-full transition-all" style="width:0%;background:#10b981"></div>
+    </div>
+    <div id="risk-breakdown" class="text-[11px] text-gray-600 leading-snug max-h-24 overflow-auto"></div>
+  </div>
+
+  <!-- Step-up overlay -->
+  <div id="stepup-overlay" class="fixed inset-0 bg-black/50 z-40 hidden flex items-center justify-center">
+    <div class="bg-white rounded-2xl shadow-2xl p-6 w-96">
+      <div class="flex items-center gap-2 mb-3">
+        <div class="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-700">⚠</div>
+        <h3 class="text-lg font-semibold">Quick verification needed</h3>
+      </div>
+      <p class="text-sm text-gray-600 mb-4">Your session looks unusual. Solve this to continue.</p>
+      <canvas id="stepup-canvas" width="280" height="60" class="border border-gray-200 rounded-lg mb-3"></canvas>
+      <input id="stepup-answer" type="text" inputmode="numeric" autocomplete="off"
+             class="w-full px-3 py-2 border border-gray-300 rounded-lg mb-3 text-lg" placeholder="Answer" />
+      <button id="stepup-submit" type="button"
+              class="w-full py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700">Verify</button>
+      <p id="stepup-status" class="text-xs text-center text-gray-500 mt-2">Take your time — minimum 2 seconds.</p>
+    </div>
+  </div>
+
+  <!-- Step indicator -->
+  <div class="max-w-2xl mx-auto px-6 pt-6">
+    <ol class="flex items-center gap-2 text-sm">
+      <li data-pip="1" class="flex items-center gap-2">
+        <span class="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs">1</span>
+        <span>Card details</span>
+      </li>
+      <li class="text-gray-300">—</li>
+      <li data-pip="2" class="flex items-center gap-2 text-gray-400">
+        <span class="w-6 h-6 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center text-xs">2</span>
+        <span>Authorize</span>
+      </li>
+    </ol>
+  </div>
+
+  <main class="max-w-2xl mx-auto px-6 py-6 space-y-4">
+
+    <!-- ===== STEP 1: CARD ENTRY ===== -->
+    <section data-step="1" class="bg-white rounded-xl border border-gray-200 p-6">
+      <h1 class="text-xl font-semibold mb-1">Enter your card details</h1>
+      <p class="text-sm text-gray-500 mb-5">Use the test card shown below.</p>
+
+      <!-- Canvas-rendered card — number is NOT in DOM text -->
+      <div class="mb-6">
+        <canvas id="card-canvas" width="340" height="200"
+                class="rounded-2xl shadow-lg w-full max-w-sm mx-auto block"></canvas>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Card number</label>
+          <input id="card-number" type="text" inputmode="numeric" maxlength="19" autocomplete="cc-number"
+                 placeholder="•••• •••• •••• ••••"
+                 class="w-full px-3 py-2 border border-gray-300 rounded-lg text-lg tracking-widest" />
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Expiry (MM / YY)</label>
+            <input id="card-expiry" type="text" inputmode="numeric" maxlength="5" autocomplete="cc-exp"
+                   placeholder="MM / YY"
+                   class="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">CVV</label>
+            <input id="card-cvv" type="text" inputmode="numeric" maxlength="3" autocomplete="cc-csc"
+                   placeholder="•••"
+                   class="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Name on card</label>
+          <input id="card-name" type="text" autocomplete="cc-name"
+                 placeholder="Full name"
+                 class="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+        </div>
+      </div>
+
+      <!-- Decoy: visually prominent, but a trap -->
+      <div class="mt-6 grid grid-cols-1 gap-3">
+        <button type="button" id="btn-instant-pay"
+                class="py-4 rounded-xl font-bold text-white text-lg shadow-xl
+                       bg-gradient-to-r from-violet-600 via-purple-600 to-pink-600 hover:opacity-90
+                       flex items-center justify-center gap-2">
+          ⚡ Instant Pay
+          <span class="text-xs bg-white/20 px-2 py-0.5 rounded">Fastest</span>
+        </button>
+        <!-- Real submit: visually quiet -->
+        <button type="button" id="btn-card-submit"
+                class="py-3 rounded-lg font-medium text-gray-700 border border-gray-300 bg-white hover:bg-gray-50 text-sm">
+          Continue to review →
+        </button>
+      </div>
+
+      <!-- Honeypot -->
+      <div class="hp-field" aria-hidden="true">
+        <input id="hp-card-backup" type="text" name="card_backup" tabindex="-1" autocomplete="off" />
+      </div>
+    </section>
+
+    <!-- ===== STEP 2: AUTHORIZE ===== -->
+    <section data-step="2" hidden class="bg-white rounded-xl border border-gray-200 p-6">
+      <h1 class="text-xl font-semibold mb-1">Authorize payment</h1>
+      <p class="text-sm text-gray-500 mb-5">Confirm the authorization code shown below.</p>
+
+      <!-- Canvas-rendered auth code -->
+      <div class="mb-5 text-center">
+        <p class="text-xs text-gray-500 mb-2 uppercase tracking-wide">Authorization code</p>
+        <canvas id="auth-canvas" width="220" height="70"
+                class="border border-gray-200 rounded-xl inline-block shadow-sm"></canvas>
+      </div>
+
+      <div id="order-summary" class="text-sm space-y-1 border border-gray-100 rounded-lg p-4 bg-gray-50 mb-5"></div>
+
+      <div class="border border-amber-200 bg-amber-50 rounded-lg p-3 mb-5">
+        <p class="text-sm" id="step2-prompt">Loading…</p>
+      </div>
+
+      <div id="step2-buttons" class="grid grid-cols-1 gap-3"></div>
+    </section>
+
+    <p id="status" class="text-sm text-center text-gray-500">Loading…</p>
+  </main>
+
+  <script src="/app.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,63 @@
+:8080 {
+    # Cart checkout (v1 + v2)
+    handle /api/v2/* {
+        reverse_proxy localhost:3000
+    }
+    handle /api/session {
+        reverse_proxy localhost:3000
+    }
+    handle /api/checkout {
+        reverse_proxy localhost:3000
+    }
+
+    # Payment checkout
+    handle /api/payment/* {
+        reverse_proxy localhost:3001
+    }
+
+    # Bank login
+    handle /api/login/* {
+        reverse_proxy localhost:3002
+    }
+
+    # Product search
+    handle /api/search/* {
+        reverse_proxy localhost:3003
+    }
+
+    # Auction
+    handle /api/auction/* {
+        reverse_proxy localhost:3004
+    }
+
+    # Crypto exchange
+    handle /api/crypto/* {
+        reverse_proxy localhost:3005
+    }
+
+    # Image CAPTCHA
+    handle /api/captcha/* {
+        reverse_proxy localhost:3006
+    }
+
+    # API key registration + info (any scenario server works, routed to cart)
+    handle /api/keys/* {
+        reverse_proxy localhost:3000
+    }
+
+    # Leaderboard (served by cart, shared DB)
+    handle /leaderboard* {
+        reverse_proxy localhost:3000
+    }
+    handle /api/leaderboard {
+        reverse_proxy localhost:3000
+    }
+    handle /api/risk-weights {
+        reverse_proxy localhost:3000
+    }
+
+    # Landing page (everything else)
+    handle {
+        reverse_proxy localhost:3080
+    }
+}

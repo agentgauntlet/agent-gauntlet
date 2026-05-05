@@ -1,0 +1,17 @@
+FROM node:20-alpine
+
+# openssl for self-signed cert generation
+RUN apk add --no-cache openssl
+
+WORKDIR /app
+
+# Copy shared modules
+COPY ../shared /shared
+
+COPY package.json ./
+RUN npm install --omit=dev
+
+COPY . .
+
+EXPOSE 3000 3443
+CMD ["node", "server.js"]
