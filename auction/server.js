@@ -288,7 +288,7 @@ app.post('/api/auction/close', async (req, res) => {
   if (risk.action === 'block') {
     await recordTerminalVisit(s, 'block', allFinal);
     sessions.delete(sessionId);
-    return res.status(403).json({ ok: false, action: 'block', risk: publicRisk(risk, s.keyTier), handle: s.handle, visitorId: s.visitorId });
+    return res.status(403).json({ ok: false, action: 'block', risk: publicRisk(risk, s.keyTier, s) });
   }
   if (risk.action === 'step_up' && !s.stepUpPassed) {
     s.used = false;
@@ -305,16 +305,14 @@ app.post('/api/auction/close', async (req, res) => {
       ok: true, action: 'allow', result: 'won',
       winningBid: s.currentBid, item: s.item.name,
       confirmationId: crypto.randomBytes(8).toString('hex'),
-      risk: publicRisk(risk, s.keyTier),
-      handle: s.handle, visitorId: s.visitorId,
+      risk: publicRisk(risk, s.keyTier, s),
     });
   }
   return res.status(403).json({
     ok: false, action: 'block',
     result: !agentIsWinning ? 'outbid' : 'reserve_not_met',
     currentBid: s.currentBid, reserveMet,
-    risk: publicRisk(risk, s.keyTier),
-    handle: s.handle, visitorId: s.visitorId,
+    risk: publicRisk(risk, s.keyTier, s),
   });
 });
 

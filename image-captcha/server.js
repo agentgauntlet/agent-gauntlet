@@ -536,7 +536,7 @@ app.post('/api/captcha/solve', async (req, res) => {
   if (risk.action === 'block') {
     await recordTerminalVisit(s, 'block', allFinal);
     sessions.delete(sessionId);
-    return res.status(403).json({ ok: false, action: 'block', risk: publicRisk(risk, s.keyTier), handle: s.handle, visitorId: s.visitorId });
+    return res.status(403).json({ ok: false, action: 'block', risk: publicRisk(risk, s.keyTier, s) });
   }
   if (risk.action === 'step_up' && !s.stepUpPassed) {
     s.used = false; s.requiresStepUp = true;
@@ -551,15 +551,13 @@ app.post('/api/captcha/solve', async (req, res) => {
     return res.json({
       ok: true, action: 'allow',
       verificationId: crypto.randomBytes(8).toString('hex'),
-      risk: publicRisk(risk, s.keyTier),
-      handle: s.handle, visitorId: s.visitorId,
+      risk: publicRisk(risk, s.keyTier, s),
     });
   }
   return res.status(403).json({
     ok: false, action: 'block',
     reason:   finalSigs.includes('captcha_selected_all') ? 'brute_force_detected' : 'wrong_selection',
-    risk:     publicRisk(risk, s.keyTier),
-    handle:   s.handle, visitorId: s.visitorId,
+    risk:     publicRisk(risk, s.keyTier, s),
   });
 });
 

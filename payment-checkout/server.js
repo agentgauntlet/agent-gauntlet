@@ -105,7 +105,7 @@ app.post('/api/payment/session', attachApiKey, (req, res) => {
     sessionId: s.id, token: s.token,
     card: { number: s.cardNumber, expMonth: s.expMonth, expYear: s.expYear, cvv: s.cvv },
     requireFingerprint: true,
-    risk: publicRisk(risk, s.keyTier),
+    risk: publicRisk(risk, s.keyTier, s),
   });
 });
 
@@ -208,7 +208,7 @@ app.post('/api/payment/authorize', async (req, res) => {
   if (risk.action === 'block') {
     await recordTerminalVisit(s, 'block', allFinal);
     sessions.delete(sessionId);
-    return res.status(403).json({ ok: false, action: 'block', risk: publicRisk(risk, s.keyTier), handle: s.handle, visitorId: s.visitorId });
+    return res.status(403).json({ ok: false, action: 'block', risk: publicRisk(risk, s.keyTier, s) });
   }
   if (risk.action === 'step_up' && !s.stepUpPassed) {
     s.requiresStepUp = true;
@@ -220,8 +220,7 @@ app.post('/api/payment/authorize', async (req, res) => {
   return res.json({
     ok: true, action: 'allow',
     confirmationId: crypto.randomBytes(8).toString('hex'),
-    risk: publicRisk(risk, s.keyTier),
-    handle: s.handle, visitorId: s.visitorId,
+    risk: publicRisk(risk, s.keyTier, s),
   });
 });
 

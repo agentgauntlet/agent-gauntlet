@@ -169,7 +169,7 @@ app.post('/api/v2/session', attachApiKey, (req, res) => {
       low: s.step1.low, high: s.step1.high,
     },
     requireFingerprint: true,
-    risk: publicRisk(risk, s.keyTier),
+    risk: publicRisk(risk, s.keyTier, s),
   });
 });
 
@@ -291,7 +291,7 @@ app.post('/api/v2/checkout', async (req, res) => {
   if (risk.action === 'block') {
     await recordTerminalVisit(s, 'block', finalSignals);
     sessions.delete(sessionId);
-    return res.status(403).json({ ok: false, action: 'block', risk: publicRisk(risk, s.keyTier), handle: s.handle, visitorId: s.visitorId });
+    return res.status(403).json({ ok: false, action: 'block', risk: publicRisk(risk, s.keyTier, s) });
   }
   if (risk.action === 'step_up' && !s.stepUpPassed) {
     s.requiresStepUp = true;
@@ -303,8 +303,7 @@ app.post('/api/v2/checkout', async (req, res) => {
   return res.json({
     ok: true, action: 'allow',
     orderId: crypto.randomBytes(8).toString('hex'),
-    risk: publicRisk(risk, s.keyTier),
-    handle: s.handle, visitorId: s.visitorId,
+    risk: publicRisk(risk, s.keyTier, s),
   });
 });
 

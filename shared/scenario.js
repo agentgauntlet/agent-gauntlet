@@ -92,18 +92,23 @@ function scoreTls(req) {
   return isHttps ? tlsFp.scoreTls(req.tlsFingerprint) : { hard: [], soft: [] };
 }
 
-// keyTier controls how much signal detail is exposed in API responses.
-// free  → signal names only (no weights, no thresholds)
-// pro / enterprise → full breakdown + thresholds
-function publicRisk(risk, keyTier = 'free') {
+// keyTier controls how much detail is exposed in API responses.
+//   anonymous           → score, tier, action only
+//   free                → + signal names + handle (leaderboard identity)
+//   pro / enterprise    → + breakdown, thresholds, handle
+//
+// Pass meta = { handle, visitorId } to include leaderboard identity for free+.
+function publicRisk(risk, keyTier = 'free', meta = {}) {
   const base = { score: risk.score, tier: risk.tier, action: risk.action };
-  if (keyTier === 'pro' || keyTier === 'enterprise') {
-    return { ...base, breakdown: risk.breakdown, thresholds: THRESHOLDS };
-  }
   if (!keyTier || keyTier === 'anonymous') {
-    return base; // no signal names for anonymous runs
+    return base;
   }
-  return { ...base, signals: (risk.breakdown || []).map(b => b.signal) };
+  const identity = meta.handle ? { handle: meta.handle, visitorId: meta.visitorId } : {};
+  if (keyTier === 'pro' || keyTier === 'enterprise') {
+    return { ...base, ...identity, breakdown: risk.breakdown, thresholds: THRESHOLDS };
+  }
+  // free
+  return { ...base, ...identity, signals: (risk.breakdown || []).map(b => b.signal) };
 }
 
 function send429(res, info) {
@@ -375,13 +380,13 @@ function createScenario({
 
     if (risk.action === 'block') {
       await recordTerminalVisit(s, 'block', allSigs);
-      return res.status(403).json({ ok: false, action: 'block', risk: publicRisk(risk, s.keyTier), visitorId: s.visitorId, handle: s.handle });
+      return res.status(403).json({ ok: false, action: 'block', risk: publicRisk(risk, s.keyTier, s) });
     }
     if (risk.action === 'step_up') {
       s.requiresStepUp = true;
-      return res.json({ ok: true, action: 'step_up', risk: publicRisk(risk, s.keyTier), visitorId: s.visitorId, handle: s.handle });
+      return res.json({ ok: true, action: 'step_up', risk: publicRisk(risk, s.keyTier, s) });
     }
-    res.json({ ok: true, action: 'allow', risk: publicRisk(risk, s.keyTier), visitorId: s.visitorId, handle: s.handle });
+    res.json({ ok: true, action: 'allow', risk: publicRisk(risk, s.keyTier, s) });
   });
 
   app.post(`${apiPrefix}/stepup-challenge`, (req, res) => {
@@ -396,7 +401,7 @@ function createScenario({
     const op = ['+', '-', '×'][randInt(0, 3)];
     const answer = op === '+' ? a + b : op === '-' ? a - b : a * b;
     s.stepUp = { a, b, op, answer, issuedAt: Date.now() };
-    res.json({ a, b, op, minDwellMs: 2000, risk: publicRisk(s.lastRisk || computeRisk(s.signals), s.keyTier), handle: s.handle });
+    res.json({ a, b, op, minDwellMs: 2000, risk: publicRisk(s.lastRisk || computeRisk(s.signals), s.keyTier, s) });
   });
 
   app.post(`${apiPrefix}/stepup-verify`, async (req, res) => {
@@ -428,15 +433,15 @@ function createScenario({
     s.stepUp         = null;
     const risk = computeRisk(s.signals);
     s.lastRisk = risk;
-    res.json({ ok: true, action: 'allow', risk: publicRisk(risk, s.keyTier), handle: s.handle });
+    res.json({ ok: true, action: 'allow', risk: publicRisk(risk, s.keyTier, s) });
   });
 
   app.get(`${apiPrefix}/visitor`, async (req, res) => {
     const s = req.query.sessionId ? sessions.get(req.query.sessionId) : null;
     if (!s || !s.visitorId) return res.status(404).json({ ok: false, reason: 'no_visitor_yet' });
     const v = await visitorStore.get(s.visitorId);
-    res.json({ ok: true, handle: s.handle, visitorId: s.visitorId, history: v,
-               currentRisk: publicRisk(s.lastRisk || computeRisk(s.signals), s.keyTier) });
+    res.json({ ok: true, history: v,
+               currentRisk: publicRisk(s.lastRisk || computeRisk(s.signals), s.keyTier, s) });
   });
 
   app.post('/api/keys/register', rateLimitRegistration, async (req, res) => {

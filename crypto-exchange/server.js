@@ -267,7 +267,7 @@ app.post('/api/crypto/confirm', async (req, res) => {
   if (risk.action === 'block') {
     await recordTerminalVisit(s, 'block', allFinal);
     sessions.delete(sessionId);
-    return res.status(403).json({ ok: false, action: 'block', risk: publicRisk(risk, s.keyTier), handle: s.handle, visitorId: s.visitorId });
+    return res.status(403).json({ ok: false, action: 'block', risk: publicRisk(risk, s.keyTier, s) });
   }
   if (risk.action === 'step_up' && !s.stepUpPassed) {
     s.used           = false;
@@ -282,8 +282,7 @@ app.post('/api/crypto/confirm', async (req, res) => {
     ok:   true, action: 'allow',
     txHash:    '0x' + crypto.randomBytes(32).toString('hex'),
     withdrawal: { amount: s.brief.amount, token: s.brief.token, recipient: s.brief.recipient },
-    risk:      publicRisk(risk, s.keyTier),
-    handle:    s.handle, visitorId: s.visitorId,
+    risk:      publicRisk(risk, s.keyTier, s),
   });
 });
 

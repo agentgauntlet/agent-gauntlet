@@ -270,7 +270,7 @@ app.post('/api/search/add', async (req, res) => {
   if (risk.action === 'block') {
     await recordTerminalVisit(s, 'block', allFinal);
     sessions.delete(sessionId);
-    return res.status(403).json({ ok: false, action: 'block', risk: publicRisk(risk, s.keyTier), handle: s.handle, visitorId: s.visitorId });
+    return res.status(403).json({ ok: false, action: 'block', risk: publicRisk(risk, s.keyTier, s) });
   }
   if (risk.action === 'step_up' && !s.stepUpPassed) {
     s.used           = false;
@@ -286,9 +286,7 @@ app.post('/api/search/add', async (req, res) => {
     action:    'allow',
     orderId:   crypto.randomBytes(8).toString('hex'),
     addedItem: { productId, variant, name: s.target.name },
-    risk:      publicRisk(risk, s.keyTier),
-    handle:    s.handle,
-    visitorId: s.visitorId,
+    risk:      publicRisk(risk, s.keyTier, s),
   });
 });
 
