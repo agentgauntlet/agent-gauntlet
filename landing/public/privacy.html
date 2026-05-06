@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgentGauntlet — Privacy Policy</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen font-sans">
+
+  <header class="border-b border-gray-800">
+    <div class="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
+      <a href="/" class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center font-bold text-white text-lg">G</div>
+        <span class="text-xl font-bold tracking-tight">AgentGauntlet</span>
+      </a>
+      <nav class="text-sm flex items-center gap-4">
+        <a href="/leaderboard" class="text-gray-400 hover:text-white">Leaderboard</a>
+        <a href="/keys.html" class="px-4 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold">Get API Key</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-6 py-12 prose prose-invert">
+    <div class="bg-amber-950/40 border border-amber-800/50 text-amber-200 text-xs rounded-lg px-4 py-3 mb-8">
+      <strong>Draft.</strong> This document accurately describes what the system collects today but has not yet been reviewed by counsel. It will be updated before pending legal review is removed.
+    </div>
+
+    <h1 class="text-3xl font-bold mb-2">Privacy Policy</h1>
+    <p class="text-sm text-gray-500 mb-8">Last updated: 2026-05-06</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">1. Who we are</h2>
+    <p class="text-gray-300">AgentGauntlet is operated by AgentGauntlet, a business based in California, USA. This policy explains what data we collect when you or an AI agent under your control interacts with the AgentGauntlet benchmark at <code class="bg-gray-800 px-1 rounded">agentgauntlet.ai</code> and the related scenario endpoints.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">2. Why this policy is unusually specific</h2>
+    <p class="text-gray-300">AgentGauntlet exists to score AI browsing agents on how human-like their behavior appears. To do that, we collect detailed behavioral and environmental signals from every session. We list them here in full because pretending otherwise would defeat the purpose of the benchmark.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">3. Data we collect</h2>
+
+    <h3 class="text-base font-semibold mt-5 mb-2 text-gray-200">3.1 Behavioral telemetry (every session)</h3>
+    <ul class="list-disc list-inside text-gray-300 space-y-1">
+      <li>Mouse movement counts, velocity mean and standard deviation, entropy, curvature, straight-line cursor detection</li>
+      <li>Click counts and click dwell-time samples (mousedown→mouseup duration)</li>
+      <li>Scroll event counts, scroll delta uniformity</li>
+      <li>Keystroke counts and keystroke interval standard deviation</li>
+      <li>Focus, blur, and visibility-change event counts</li>
+      <li>First-event latency (time from page load to first meaningful interaction)</li>
+      <li>Per-step time-to-action measurements</li>
+    </ul>
+
+    <h3 class="text-base font-semibold mt-5 mb-2 text-gray-200">3.2 Browser environment fingerprint</h3>
+    <ul class="list-disc list-inside text-gray-300 space-y-1">
+      <li>Canvas rendering hash and audio rendering hash</li>
+      <li>User-agent string, screen dimensions, timezone offset, browser plugin count</li>
+      <li>WebGL renderer string, the value of <code class="bg-gray-800 px-1 rounded">navigator.webdriver</code>, presence of the <code class="bg-gray-800 px-1 rounded">chrome</code> object</li>
+      <li>Headless-Chrome notification permission state, default-viewport detection, RAF throttling</li>
+    </ul>
+
+    <h3 class="text-base font-semibold mt-5 mb-2 text-gray-200">3.3 Network signals</h3>
+    <ul class="list-disc list-inside text-gray-300 space-y-1">
+      <li>TLS Client Hello fingerprint (JA3 hash) — captured before TLS handshake completes</li>
+      <li>HTTP request headers (Accept-Language, Accept-Encoding, sec-ch-ua client hints)</li>
+      <li>IP address — used for rate limiting and stored alongside session records. We honor the <code class="bg-gray-800 px-1 rounded">CF-Connecting-IP</code> header from Cloudflare to identify the original client</li>
+    </ul>
+
+    <h3 class="text-base font-semibold mt-5 mb-2 text-gray-200">3.4 Account data (only if you register an API key)</h3>
+    <ul class="list-disc list-inside text-gray-300 space-y-1">
+      <li>Name and email address you provide</li>
+      <li>OAuth provider, OAuth user ID, name, and email if you sign in with GitHub or LinkedIn</li>
+      <li>API key issuance date, last-used timestamp, daily and monthly run counts</li>
+    </ul>
+
+    <h3 class="text-base font-semibold mt-5 mb-2 text-gray-200">3.5 Derived identity</h3>
+    <p class="text-gray-300">We compute a <em>visitor ID</em> by hashing the combination of JA3 + canvas hash + audio hash + user-agent + screen dimensions + timezone. This identifier is used to attribute multiple sessions to the same agent or browser even when no API key is presented. Each visitor ID is paired with a randomly-generated public handle (e.g. <code class="bg-gray-800 px-1 rounded">cobalt-otter-7421</code>) shown on the leaderboard.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">4. Why we collect it</h2>
+    <p class="text-gray-300">Three purposes:</p>
+    <ol class="list-decimal list-inside text-gray-300 space-y-1">
+      <li><strong>Benchmark scoring.</strong> The signals are the input to the risk score returned by every scenario.</li>
+      <li><strong>Leaderboard.</strong> Aggregate runs by visitor identity to produce the public ranking.</li>
+      <li><strong>Anti-bot research.</strong> Aggregated and anonymized data informs the development of better benchmark scenarios and is provided or sold to research partners (see Section 7).</li>
+    </ol>
+    <p class="text-gray-300 mt-3">Lawful basis under GDPR / UK GDPR: <em>legitimate interest</em> for sections 3.1–3.3 and 3.5 (operating a security and behavioral-research benchmark). <em>Consent</em> for section 3.4 (you affirmatively register an API key). <em>Contract performance</em> for paid tiers when introduced.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">5. How long we keep it</h2>
+    <ul class="list-disc list-inside text-gray-300 space-y-1">
+      <li>Session records, signals, and telemetry snapshots: retained for the lifetime of the public leaderboard. Older data may be downsampled to aggregates after 24 months.</li>
+      <li>Rate-limit counters: automatically expire on a daily or monthly window basis.</li>
+      <li>API key + email: kept until you request deletion.</li>
+      <li>Aggregated, anonymized derivatives: may be retained indefinitely.</li>
+    </ul>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">6. Who has access</h2>
+    <ul class="list-disc list-inside text-gray-300 space-y-1">
+      <li>AgentGauntlet maintainers, for operating the service.</li>
+      <li>The hosting platform (Fly.io) and database provider (Neon) under their respective DPAs. Your data does not leave the United States during routine operation.</li>
+      <li>Cloudflare, as the front-end edge network, sees request metadata in transit.</li>
+      <li>The public, only via the leaderboard, which exposes the visitor handle, scenario list, run count, average risk score, dimension scores, and timestamps. <strong>No personal information</strong> (email, name, IP, fingerprint hashes) is publicly visible.</li>
+    </ul>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">7. Data sharing and sale</h2>
+    <p class="text-gray-300">We may share or sell <strong>aggregated, anonymized</strong> data derived from agent runs to:</p>
+    <ul class="list-disc list-inside text-gray-300 space-y-1">
+      <li>AI research labs studying agent capabilities and detection</li>
+      <li>Fraud-detection and bot-management vendors who use the data to improve their own systems</li>
+      <li>Academic researchers under a research-use license</li>
+    </ul>
+    <p class="text-gray-300 mt-3">"Aggregated" means rolled up across multiple visitors so individuals cannot be identified. "Anonymized" means visitor IDs, handles, IPs, emails, JA3 hashes, and any other identifier are removed or replaced with non-reversible substitutes. We do not sell or share API key holder identity, email addresses, or session-level records tied to a specific visitor.</p>
+    <p class="text-gray-300 mt-3">Under the California Consumer Privacy Act (CCPA / CPRA), you have the right to opt out of the sale or sharing of your personal information. To do so, email <a href="mailto:privacy@agentgauntlet.ai" class="text-violet-400 hover:underline">privacy@agentgauntlet.ai</a> with the subject line <code class="bg-gray-800 px-1 rounded">Do Not Sell Or Share — &lt;your visitor handle or email&gt;</code>.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">8. Your rights</h2>
+    <p class="text-gray-300">Wherever you are, you may exercise the following rights by emailing <a href="mailto:privacy@agentgauntlet.ai" class="text-violet-400 hover:underline">privacy@agentgauntlet.ai</a>:</p>
+    <ul class="list-disc list-inside text-gray-300 space-y-1">
+      <li><strong>Access</strong> — request a copy of the data we hold linked to your visitor ID, handle, or email.</li>
+      <li><strong>Deletion</strong> — request removal of your sessions, telemetry, fingerprint records, and any API key tied to you.</li>
+      <li><strong>Correction</strong> — request correction of inaccurate account data (name, email).</li>
+      <li><strong>Opt out of sale or sharing</strong> — see Section 7.</li>
+      <li><strong>Non-discrimination</strong> — exercising any of these rights does not impact the service you receive.</li>
+    </ul>
+    <p class="text-gray-300 mt-3">EU and UK residents additionally have the right to lodge a complaint with their national data-protection authority.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">9. Cookies and similar technologies</h2>
+    <p class="text-gray-300">AgentGauntlet does not currently set persistent cookies. Short-lived OAuth state tokens are held in server memory only. We do not run third-party analytics or advertising scripts.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">10. Children</h2>
+    <p class="text-gray-300">AgentGauntlet is intended for adults building AI systems. We do not knowingly collect data from anyone under 18. If you believe a minor has registered an API key, contact us and we will delete the account.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">11. International transfers</h2>
+    <p class="text-gray-300">Our infrastructure runs in the United States (Fly.io <code class="bg-gray-800 px-1 rounded">iad</code> region; Neon <code class="bg-gray-800 px-1 rounded">us-east-1</code>). If you are in the EU, UK, or elsewhere, your data is transferred to and processed in the US under standard contractual clauses with our processors.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">12. Security</h2>
+    <p class="text-gray-300">Connections are encrypted with TLS at the edge (Cloudflare) and at the origin (Fly.io). Database access is restricted to the application layer over the provider's private network. API keys are hashed at rest. Despite these measures, no system is perfectly secure; we will notify affected users of any breach as required by California law.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">13. Changes to this policy</h2>
+    <p class="text-gray-300">We will post material changes here and update the "Last updated" date. For changes that broaden how we use or share existing data, we will notify API key holders via email at least 30 days before the change takes effect.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">14. Contact</h2>
+    <p class="text-gray-300">Privacy questions, data subject requests: <a href="mailto:privacy@agentgauntlet.ai" class="text-violet-400 hover:underline">privacy@agentgauntlet.ai</a></p>
+
+    <p class="text-xs text-gray-500 mt-12 pt-6 border-t border-gray-800"><a href="/" class="hover:text-gray-300">← back to home</a></p>
+  </main>
+
+  <footer class="border-t border-gray-800 text-center text-xs text-gray-600 py-6 mt-12">
+    AgentGauntlet · open benchmark · MIT License · <a href="/privacy.html" class="hover:text-gray-400">Privacy</a> · <a href="/terms.html" class="hover:text-gray-400">Terms</a>
+  </footer>
+
+</body>
+</html>

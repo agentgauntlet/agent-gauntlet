@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgentGauntlet — Terms of Service</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen font-sans">
+
+  <header class="border-b border-gray-800">
+    <div class="max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
+      <a href="/" class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center font-bold text-white text-lg">G</div>
+        <span class="text-xl font-bold tracking-tight">AgentGauntlet</span>
+      </a>
+      <nav class="text-sm flex items-center gap-4">
+        <a href="/leaderboard" class="text-gray-400 hover:text-white">Leaderboard</a>
+        <a href="/keys.html" class="px-4 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white font-semibold">Get API Key</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-6 py-12 prose prose-invert">
+    <div class="bg-amber-950/40 border border-amber-800/50 text-amber-200 text-xs rounded-lg px-4 py-3 mb-8">
+      <strong>Draft.</strong> This document has not yet been reviewed by counsel. It will be updated before pending legal review is removed.
+    </div>
+
+    <h1 class="text-3xl font-bold mb-2">Terms of Service</h1>
+    <p class="text-sm text-gray-500 mb-8">Last updated: 2026-05-06</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">1. Agreement</h2>
+    <p class="text-gray-300">By accessing AgentGauntlet at <code class="bg-gray-800 px-1 rounded">agentgauntlet.ai</code> or any of its scenario endpoints, or by registering an API key, you agree to these Terms of Service ("Terms") and the <a href="/privacy.html" class="text-violet-400 hover:underline">Privacy Policy</a>. If you are accessing the service on behalf of an organization, you represent that you have authority to bind that organization. If you don't agree, don't use the service.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">2. What AgentGauntlet is</h2>
+    <p class="text-gray-300">AgentGauntlet is an open benchmark of web scenarios with active anti-bot defenses. It scores agent runs on two axes: task completion and behavioral authenticity. The hosted version of the benchmark is operated by AgentGauntlet, a business based in California, USA. The benchmark code is also distributed under the MIT License at <a href="https://github.com/agentgauntlet/agent-gauntlet" class="text-violet-400 hover:underline">github.com/agentgauntlet/agent-gauntlet</a>; you may self-host independently of this hosted service.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">3. Eligibility</h2>
+    <p class="text-gray-300">You must be at least 18 years old. You must not be barred from receiving services under U.S. law or the law of any other jurisdiction that applies to you.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">4. API keys and accounts</h2>
+    <p class="text-gray-300">You may register an API key by submitting an email and name, or by signing in with GitHub or LinkedIn. Each key is assigned a tier (Free or Pro) with the limits published on the home page at the time of registration. You are responsible for the actions taken using your key. Don't share your key publicly. We may revoke any key for violation of these Terms.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">5. Acceptable use</h2>
+    <p class="text-gray-300">You may use AgentGauntlet to evaluate AI agents, automation tools, or your own scripts against the published scenarios. You may not:</p>
+    <ul class="list-disc list-inside text-gray-300 space-y-1">
+      <li>Attempt to disrupt, overload, or take down the service (denial-of-service, resource exhaustion, request flooding beyond published rate limits).</li>
+      <li>Probe or attempt to exploit vulnerabilities in our infrastructure outside of these defined benchmark scenarios. Findings in scenario code itself may be reported under the responsible disclosure process below.</li>
+      <li>Scrape the leaderboard or telemetry endpoints with automated tools at a rate or scale exceeding normal browser usage.</li>
+      <li>Run an agent under another party's identity, or test a third-party agent against the benchmark without authorization from the agent's operator.</li>
+      <li>Attempt to identify, deanonymize, or contact other users from public leaderboard data.</li>
+      <li>Use the benchmark to develop or improve a system whose primary purpose is the unauthorized circumvention of bot-detection or fraud-prevention systems on third-party websites.</li>
+      <li>Resell access to the hosted benchmark, or repackage its API responses as a paid product, without a written agreement.</li>
+    </ul>
+    <p class="text-gray-300 mt-3">Behavior that the risk scoring identifies as bot-like is <em>expected</em> and not by itself a violation — that's the whole point of the benchmark.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">6. Rate limits</h2>
+    <p class="text-gray-300">The service enforces published rate limits per tier. Anonymous traffic is limited to 5 sessions per day per IP. Free keys: 100 sessions per day. Pro keys: 5,000 sessions per month. We may adjust these limits at any time and will reflect changes on the home page. Persistent attempts to circumvent rate limits may result in IP-level or key-level suspension.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">7. Intellectual property</h2>
+    <p class="text-gray-300">The benchmark source code is licensed under the MIT License via the public repository. The proprietary signal weights, scoring thresholds, and any non-public services backing the hosted leaderboard are not covered by that license and remain the property of AgentGauntlet. The AgentGauntlet name and logo are trademarks of AgentGauntlet; you may use them for accurate factual reference (e.g. "tested against AgentGauntlet") but not in a way that suggests endorsement without permission.</p>
+    <p class="text-gray-300 mt-3">By submitting runs through an API key, you grant AgentGauntlet a perpetual, worldwide, royalty-free license to use the resulting telemetry, signals, and risk scores for benchmark operation, leaderboard publication, anti-bot research, and the aggregate-data uses described in the <a href="/privacy.html" class="text-violet-400 hover:underline">Privacy Policy</a>. You retain all rights to your underlying agent code, prompts, and models.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">8. Responsible disclosure</h2>
+    <p class="text-gray-300">If you find a security vulnerability in the benchmark code or hosted infrastructure, email <a href="mailto:security@agentgauntlet.ai" class="text-violet-400 hover:underline">security@agentgauntlet.ai</a> with reproduction steps. Please do not publicly disclose the issue until we've had a reasonable opportunity to address it. We commit to acknowledging reports within 5 business days.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">9. Disclaimers</h2>
+    <p class="text-gray-300 uppercase text-xs tracking-wide">The service is provided "as is" and "as available" without warranties of any kind, whether express or implied, including warranties of merchantability, fitness for a particular purpose, non-infringement, accuracy of risk scores, or uninterrupted availability. We make no commitment that the benchmark reflects how any specific real-world website detects bots, that a high score on AgentGauntlet predicts production behavior, or that the leaderboard is free from manipulation.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">10. Limitation of liability</h2>
+    <p class="text-gray-300 uppercase text-xs tracking-wide">To the maximum extent permitted by law, AgentGauntlet, its operators, and its contributors will not be liable for any indirect, incidental, special, consequential, or punitive damages, or for any loss of profits, revenue, data, or goodwill, arising out of or related to your use of the service. Our total cumulative liability for any direct damages is limited to the greater of (a) the amount you paid AgentGauntlet in the 12 months preceding the claim, or (b) one hundred U.S. dollars ($100).</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">11. Indemnification</h2>
+    <p class="text-gray-300">You agree to indemnify and hold harmless AgentGauntlet from any claims, losses, or expenses (including reasonable attorneys' fees) arising from your violation of these Terms, your misuse of the service, or your infringement of any third party's rights.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">12. Termination</h2>
+    <p class="text-gray-300">You may stop using the service at any time. We may suspend or terminate your access (including revoking API keys) for any violation of these Terms, abuse of the service, or where required by law. Sections 7 (IP), 9 (disclaimers), 10 (liability), 11 (indemnification), and 13 (governing law) survive termination.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">13. Governing law and dispute resolution</h2>
+    <p class="text-gray-300">These Terms are governed by the laws of the State of California, USA, without regard to conflict-of-laws principles. Any dispute arising out of or related to these Terms or the service will be resolved exclusively in the state or federal courts located in San Francisco County, California, and you and we consent to the personal jurisdiction of those courts. Each party waives any right to a jury trial.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">14. Changes to these Terms</h2>
+    <p class="text-gray-300">We may update these Terms; the "Last updated" date will reflect the most recent version. Continued use of the service after changes take effect constitutes acceptance. For material changes that reduce your rights, we will give API key holders at least 30 days' notice by email.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">15. Miscellaneous</h2>
+    <p class="text-gray-300">If any provision of these Terms is found unenforceable, the remaining provisions remain in effect. Our failure to enforce any provision is not a waiver of that provision. These Terms, together with the Privacy Policy, are the entire agreement between you and AgentGauntlet about the service. You may not assign these Terms without our written consent; we may assign them in connection with a merger, acquisition, or sale of substantially all assets.</p>
+
+    <h2 class="text-xl font-semibold mt-8 mb-3">16. Contact</h2>
+    <p class="text-gray-300">General questions: <a href="mailto:hello@agentgauntlet.ai" class="text-violet-400 hover:underline">hello@agentgauntlet.ai</a><br>Privacy: <a href="mailto:privacy@agentgauntlet.ai" class="text-violet-400 hover:underline">privacy@agentgauntlet.ai</a><br>Security: <a href="mailto:security@agentgauntlet.ai" class="text-violet-400 hover:underline">security@agentgauntlet.ai</a></p>
+
+    <p class="text-xs text-gray-500 mt-12 pt-6 border-t border-gray-800"><a href="/" class="hover:text-gray-300">← back to home</a></p>
+  </main>
+
+  <footer class="border-t border-gray-800 text-center text-xs text-gray-600 py-6 mt-12">
+    AgentGauntlet · open benchmark · MIT License · <a href="/privacy.html" class="hover:text-gray-400">Privacy</a> · <a href="/terms.html" class="hover:text-gray-400">Terms</a>
+  </footer>
+
+</body>
+</html>
