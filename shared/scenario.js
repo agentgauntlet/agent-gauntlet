@@ -542,8 +542,18 @@ function createScenario({
   });
 
   app.get('/api/risk-weights', (_req, res) => {
-    if (isSelfHosted()) return res.json({ selfHosted: true, weights: {}, thresholds: {} });
-    res.json({ weights: SIGNAL_WEIGHTS, thresholds: THRESHOLDS });
+    if (isSelfHosted()) {
+      // Self-hosted scoring uses shared/risk.js — return the in-process values
+      // since they're what's actually being applied.
+      return res.json({ selfHosted: true, weights: SIGNAL_WEIGHTS, thresholds: THRESHOLDS });
+    }
+    // Hosted: real weights live in the private scoring service. The values
+    // imported from risk.js here are only the open-source fallback and would
+    // be misleading to expose as the production weights.
+    res.json({
+      selfHosted: false,
+      hint: 'Hosted scoring uses private weights to prevent overfitting. The open-source fallback in shared/risk.js is not what determines hosted leaderboard ranks.',
+    });
   });
 
   app.get('/debug/tls', (req, res) => {
