@@ -23,12 +23,16 @@ function todayUtc()      { return new Date().toISOString().slice(0, 10); }    //
 function monthUtc()      { return new Date().toISOString().slice(0, 7);  }    // 2026-05
 function minuteFloorUtc() { return new Date().toISOString().slice(0, 16); }   // 2026-05-04T03:21
 
-// Fly puts the real client IP in Fly-Client-IP. With trust proxy = true,
-// req.ip falls back to the leftmost X-Forwarded-For. Treat 127.0.0.1 and
-// Fly's internal 6PN (fdaa::/16) as health-check / internal — bypass.
+// Header precedence for client-IP detection:
+//   1. CF-Connecting-IP   — Cloudflare proxy (orange cloud) is in front
+//   2. Fly-Client-IP      — direct Fly traffic (no Cloudflare, or grey cloud)
+//   3. req.ip             — Express's parsed X-Forwarded-For (trust proxy)
+// Treat 127.0.0.1 and Fly's internal 6PN (fdaa::/16) as health-check / internal — bypass.
 function getClientIp(req) {
+  const cfIp  = req.headers['cf-connecting-ip'];
   const flyIp = req.headers['fly-client-ip'];
-  const ip = (Array.isArray(flyIp) ? flyIp[0] : flyIp) || req.ip || '';
+  const raw   = cfIp || flyIp || req.ip || '';
+  const ip    = Array.isArray(raw) ? raw[0] : raw;
   return String(ip).split(',')[0].trim();
 }
 
