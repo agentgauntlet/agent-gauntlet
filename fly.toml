@@ -1,0 +1,27 @@
+app            = "agentgauntlet"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  APP_URL  = "https://agentgauntlet.ai"
+  NODE_ENV = "production"
+
+[http_service]
+  internal_port       = 8080
+  force_https         = true
+  auto_stop_machines  = false
+  auto_start_machines = true
+
+  [[http_service.checks]]
+    interval   = "15s"
+    timeout    = "5s"
+    grace_period = "10s"
+    method     = "GET"
+    path       = "/"
+
+[vm]
+  cpu_kind = "shared"
+  cpus     = 2
+  memory   = "1gb"

@@ -1,0 +1,45 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:        # allow manual deploy from the Actions UI
+
+# Only run one deploy at a time. Cancel in-progress runs if a newer push lands.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  syntax-check:
+    name: Syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --ignore-scripts
+      # Cheap smoke test: each scenario module loads cleanly.
+      - name: Verify modules load
+        run: |
+          node -e "require('./shared/scenario')"
+          node -e "require('./shared/scoring')"
+          node -e "require('./shared/rate-limit')"
+          node -e "require('./shared/risk')"
+
+  deploy:
+    name: Deploy to Fly.io
+    needs: syntax-check
+    runs-on: ubuntu-latest
+    environment: production    # requires manual approval — configured in repo settings
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup flyctl
+        # NOTE: pin to a commit SHA when ready (Settings → Security → Pinned actions).
+        uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy
+        run: flyctl deploy --remote-only --app agentgauntlet
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
