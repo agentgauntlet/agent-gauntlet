@@ -26,7 +26,7 @@ const path        = require('path');
 const fs          = require('fs');
 const { execSync } = require('child_process');
 const tlsFp       = require('./tls-fingerprint');
-const { computeRisk, SIGNAL_WEIGHTS, THRESHOLDS, isSelfHosted } = require('./scoring');
+const { computeRisk, computeHostedRisk, SIGNAL_WEIGHTS, THRESHOLDS, isSelfHosted } = require('./scoring');
 const rateLimit = require('./rate-limit');
 const { computeVisitorId, handleFor }              = require('./visitor-store');
 const { PgVisitorStore }                           = require('./pg-visitor-store');
@@ -326,7 +326,7 @@ function createScenario({
     if (s.visitRecorded || !s.visitorId) return;
     s.visitRecorded = true;
     const sigs = finalSignals || s.signals;
-    const risk = computeRisk(sigs);
+    const risk = await computeHostedRisk(sigs, scenario);
     await visitorStore.recordVisit(
       s.visitorId,
       { handle: s.handle, ja3Hash: s.tlsHash, userAgent: (s.fingerprint && s.fingerprint.userAgent) || null,
