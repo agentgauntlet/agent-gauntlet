@@ -36,9 +36,38 @@ async function apiPost(path, body, token) {
     headers,
     body: JSON.stringify(body),
   });
-  const json = await res.json();
-  if (!res.ok && !json.ok) throw new Error(`API ${path} → ${res.status}: ${JSON.stringify(json)}`);
+  const text = await res.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error(`API ${path} → ${res.status} (non-JSON response):\n${text.slice(0, 300)}`);
+  }
+  // block/step_up are valid terminal outcomes — return them for the caller to handle
+  if (!res.ok && !json.ok && json.action !== 'block' && json.action !== 'step_up') {
+    throw new Error(`API ${path} → ${res.status}: ${JSON.stringify(json)}`);
+  }
   return json;
+}
+
+function printResult(risk, outcome) {
+  console.log('\n─────────────────────────────────');
+  console.log('RESULT');
+  console.log('─────────────────────────────────');
+  console.log(`Outcome:    ${outcome || (risk && risk.action) || 'unknown'}`);
+  if (risk) {
+    console.log(`Risk score: ${risk.score}/100`);
+    console.log(`Tier:       ${risk.tier}`);
+    console.log(`Action:     ${risk.action}`);
+    if (risk.signals && risk.signals.length) {
+      console.log(`Signals:    ${risk.signals.join(', ')}`);
+    }
+    if (risk.breakdown && risk.breakdown.length) {
+      console.log('\nBreakdown:');
+      risk.breakdown.forEach(d => console.log(`  ${d.dimension}: ${d.score}`));
+    }
+  }
+  console.log('─────────────────────────────────\n');
 }
 
 // --- Claude vision helper --------------------------------------------------
@@ -86,7 +115,7 @@ async function run() {
   console.log(`Step 1 prompt: ${step1Meta.prompt}\n`);
 
   // 2. Submit fingerprint (honest values — no canvas/audio spoofing)
-  await apiPost('/api/v2/fingerprint', {
+  const fpResult = await apiPost('/api/v2/fingerprint', {
     sessionId, token,
     fingerprint: {
       userAgent:  'Mozilla/5.0 (compatible; AgentGauntlet-Demo/1.0)',
@@ -97,6 +126,11 @@ async function run() {
       tz:         Intl.DateTimeFormat().resolvedOptions().timeZone,
     },
   }, token);
+  if (fpResult.action === 'block') {
+    console.log('Blocked at fingerprint stage (expected for an honest agent).');
+    printResult(fpResult.risk, 'blocked');
+    return;
+  }
 
   // 3. Launch browser and navigate to scenario
   const browser = await chromium.launch({ headless: HEADLESS });
@@ -135,6 +169,11 @@ Reply with ONLY the item id (e.g. "item-3") whose unit price is between $${step1
     answer: { itemId: targetItem.id, clickedDecoy: false },
     telemetry: telemetry(),
   }, token);
+  if (step1Result.action === 'block') {
+    await browser.close();
+    printResult(step1Result.risk, 'blocked at step 1');
+    return;
+  }
 
   const { shipping, step2: step2Meta } = step1Result;
   console.log(`Step 2 prompt: ${step2Meta.prompt}\n`);
@@ -163,6 +202,11 @@ Reply with ONLY the shipping id (e.g. "ship-2") whose cost is between ${step2Met
     answer: { shippingId: targetShipping.id },
     telemetry: telemetry(),
   }, token);
+  if (step2Result.action === 'block') {
+    await browser.close();
+    printResult(step2Result.risk, 'blocked at step 2');
+    return;
+  }
 
   const { step3: step3Meta, summary } = step2Result;
   console.log(`\nOrder summary: subtotal $${summary.subtotal} + ${summary.shippingName} $${summary.shippingCost} + tax $${summary.tax} = $${summary.total}`);
@@ -179,26 +223,7 @@ Reply with ONLY the shipping id (e.g. "ship-2") whose cost is between ${step2Met
   }, token);
 
   await browser.close();
-
-  // --- Results -------------------------------------------------------------
-  const { risk, outcome } = checkoutResult;
-  console.log('\n─────────────────────────────────');
-  console.log('RESULT');
-  console.log('─────────────────────────────────');
-  console.log(`Outcome:    ${outcome || 'completed'}`);
-  if (risk) {
-    console.log(`Risk score: ${risk.score}/100`);
-    console.log(`Tier:       ${risk.tier}`);
-    console.log(`Action:     ${risk.action}`);
-    if (risk.signals && risk.signals.length) {
-      console.log(`Signals:    ${risk.signals.join(', ')}`);
-    }
-    if (risk.breakdown && risk.breakdown.length) {
-      console.log('\nBreakdown:');
-      risk.breakdown.forEach(d => console.log(`  ${d.dimension}: ${d.score}`));
-    }
-  }
-  console.log('─────────────────────────────────\n');
+  printResult(checkoutResult.risk, checkoutResult.outcome || 'completed');
 }
 
 run().catch(err => {
