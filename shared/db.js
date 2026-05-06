@@ -1,10 +1,9 @@
 const { Pool } = require('pg');
 
-if (!process.env.DATABASE_URL) {
-  throw new Error('DATABASE_URL environment variable is required');
-}
-
-const local = /localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL);
+// Pool is constructed even without DATABASE_URL so this module loads cleanly
+// in CI / static analysis. The actual env-var check happens in initSchema()
+// and any query will fail naturally if the connection string is missing.
+const local = process.env.DATABASE_URL && /localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL);
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -18,6 +17,9 @@ pool.on('error', (err) => console.error('[db] pool error:', err.message));
 // All tables live in the gauntlet schema to avoid collisions with other
 // projects on the same Neon database. Every query uses gauntlet.<table>.
 async function initSchema() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL environment variable is required');
+  }
   const stmts = [
     'CREATE SCHEMA IF NOT EXISTS gauntlet',
     `CREATE TABLE IF NOT EXISTS gauntlet.visitors (
