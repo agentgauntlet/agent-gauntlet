@@ -12,8 +12,8 @@
 const { pool } = require('./db');
 const G = 'gauntlet';
 
-const ANON_DAILY_LIMIT       = 5;
-const ANON_BURST_PER_MIN     = 3;
+const ANON_DAILY_LIMIT       = 50;
+const ANON_BURST_PER_MIN     = 10;
 const FREE_BURST_PER_MIN     = 20;
 const PRO_MONTHLY_LIMIT      = 5000;
 const PRO_BURST_PER_MIN      = 60;

@@ -235,6 +235,10 @@ async function init() {
       body: JSON.stringify({}),
     });
     const sess = await sessRes.json();
+    if (sessRes.status === 429) {
+      showError('Demo limit reached — get a free API key for more runs.');
+      return;
+    }
     if (!sessRes.ok || sess.action === 'block') {
       showError(sess.reason || 'Blocked at session start');
       return;
