@@ -189,10 +189,14 @@ async function run() {
   }
 
   // 3. Bidding loop — runs until the auction timer expires
+  // Target ~2× starting bid to clear the hidden reserve price in most items.
+  const bidTarget    = Math.ceil(currentBid * 2.0);
   let lastStatusAt   = null;   // when we last polled (local clock)
   let lastCompetAt   = null;   // when we last saw a competitor bid (local clock)
+  let lastOwnBidAt   = null;   // when we last placed a bid (for self-escalation pacing)
   let prevIncrement  = null;   // last bid delta (for varied-increment logic)
   let myBids         = [];
+  console.log(`Bid target:   $${bidTarget} (2× starting bid, to clear reserve)\n`);
 
   // Simulate reading the item description before bidding
   const readDelay = Math.floor(3500 + Math.random() * 2000);
@@ -220,13 +224,18 @@ async function run() {
       lastCompetAt = lastStatusAt;
     }
 
-    // Decide whether to place a bid this round
+    // Decide whether to place a bid this round.
+    // Two reasons to bid: (a) competitor is leading, (b) we're leading but
+    // still below the target price (self-escalation every 15-20s).
+    const belowTarget      = status.currentBid < bidTarget;
     const notOurBid        = status.currentBidder !== 'you';
+    const selfEscalate     = status.currentBidder === 'you' && belowTarget &&
+                             (!lastOwnBidAt || (lastStatusAt - lastOwnBidAt) > 15000);
     const pastFirstBidGate = (now - sessionStart) > 3500;        // avoid bid_no_deliberation
     const pastCompetGate   = !lastCompetAt || (lastStatusAt - lastCompetAt) > 900;  // avoid overbid_immediately
     const notLastSeconds   = status.timeRemaining > 2500;        // must have enough time to wait 900ms + 700ms and still bid
 
-    if (notOurBid && pastFirstBidGate && pastCompetGate && notLastSeconds) {
+    if ((notOurBid || selfEscalate) && pastFirstBidGate && pastCompetGate && notLastSeconds) {
       // Wait 700ms+ after the status poll before bidding (avoid bid_sub_second)
       const preWait = Math.floor(700 + Math.random() * 600);
       await sleep(preWait);
@@ -242,6 +251,7 @@ async function run() {
 
       if (bidResult.ok) {
         myBids.push(amount);
+        lastOwnBidAt = Date.now();
         console.log(`  → accepted. Now leading at $${bidResult.currentBid}`);
       } else if (bidResult.action === 'block') {
         printResult(bidResult.risk, 'blocked during bidding');
