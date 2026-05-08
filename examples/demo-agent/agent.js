@@ -180,6 +180,11 @@ async function runCv() {
   }
 
   // --- Step 1: identify item visually --------------------------------------
+  // Wait for cart items to render (page uses client-side JS to populate them)
+  await page.waitForFunction(
+    () => document.getElementById('step1-prompt')?.textContent !== 'Loading…',
+    { timeout: 10000 },
+  );
   const shot1 = await page.screenshot({ fullPage: true });
   console.log(`\nStep 1 task: ${tasks.step1}`);
 
