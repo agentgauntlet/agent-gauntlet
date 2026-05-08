@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgentGauntlet — Image CAPTCHA</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+
+  <header class="bg-white border-b border-gray-200">
+    <div class="max-w-lg mx-auto px-6 py-4 flex items-center justify-between">
+      <a href="/" class="font-bold text-gray-900 tracking-tight">AgentGauntlet</a>
+      <a href="/leaderboard" class="text-rose-600 hover:underline text-sm">Leaderboard</a>
+    </div>
+  </header>
+
+  <main class="max-w-lg mx-auto px-4 py-10">
+
+    <!-- Loading state -->
+    <div id="loading" class="text-center py-20 text-gray-400 text-sm">Loading challenge…</div>
+
+    <!-- CAPTCHA widget -->
+    <div id="widget" class="hidden bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+
+      <!-- Header bar -->
+      <div class="bg-rose-600 px-5 py-3 flex items-center gap-3">
+        <div class="w-7 h-7 rounded bg-white/20 flex items-center justify-center text-white font-bold text-sm shrink-0">👁</div>
+        <div>
+          <div class="text-white font-semibold text-sm">Image CAPTCHA</div>
+          <div class="text-rose-200 text-xs">AgentGauntlet · Vision challenge</div>
+        </div>
+      </div>
+
+      <!-- Instruction -->
+      <div class="px-5 pt-4 pb-2">
+        <p id="instruction" class="text-sm font-medium text-gray-800"></p>
+        <p class="text-xs text-gray-400 mt-1">Click all matching squares. Click again to deselect.</p>
+      </div>
+
+      <!-- 3×3 grid -->
+      <div id="grid" class="grid grid-cols-3 gap-1 px-5 pb-3 mt-2"></div>
+
+      <!-- Footer: timer + submit -->
+      <div class="border-t border-gray-100 px-5 py-4 flex items-center justify-between gap-4">
+        <div id="timer-msg" class="text-xs text-gray-400">Please wait…</div>
+        <button id="verify-btn" disabled
+          onclick="submitSolution()"
+          class="px-5 py-2 rounded-xl text-sm font-semibold bg-rose-600 text-white transition-opacity opacity-40 cursor-not-allowed">
+          Verify
+        </button>
+      </div>
+    </div>
+
+    <!-- Result card -->
+    <div id="result" class="hidden mt-6 bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+      <div id="result-icon" class="text-3xl mb-3 text-center"></div>
+      <h2 id="result-title" class="text-lg font-semibold text-center mb-4"></h2>
+      <dl class="text-sm space-y-2">
+        <div class="flex justify-between"><dt class="text-gray-500">Risk score</dt><dd id="res-score" class="font-mono font-semibold"></dd></div>
+        <div class="flex justify-between"><dt class="text-gray-500">Tier</dt><dd id="res-tier" class="font-mono"></dd></div>
+        <div class="flex justify-between"><dt class="text-gray-500">Action</dt><dd id="res-action" class="font-mono"></dd></div>
+        <div id="res-signals-row" class="hidden flex-col gap-1">
+          <dt class="text-gray-500">Signals</dt>
+          <dd id="res-signals" class="font-mono text-xs text-red-600 break-all"></dd>
+        </div>
+        <div id="res-verifid-row" class="hidden justify-between">
+          <dt class="text-gray-500">Verification ID</dt>
+          <dd id="res-verifid" class="font-mono text-xs"></dd>
+        </div>
+      </dl>
+      <button onclick="location.reload()" class="mt-5 w-full py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold transition-colors">
+        Try again →
+      </button>
+    </div>
+
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>

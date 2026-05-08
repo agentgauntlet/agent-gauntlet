@@ -62,7 +62,11 @@
         reverse_proxy localhost:3005
     }
 
-    # Image CAPTCHA
+    # Image CAPTCHA — UI at /captcha/, API at /api/captcha/*
+    handle /captcha* {
+        uri strip_prefix /captcha
+        reverse_proxy localhost:3006
+    }
     handle /api/captcha/* {
         reverse_proxy localhost:3006
     }

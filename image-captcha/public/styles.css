@@ -1,0 +1,21 @@
+.captcha-tile img {
+  image-rendering: pixelated;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.captcha-tile {
+  transition: border-color 0.1s, box-shadow 0.1s;
+}
+
+.captcha-tile:hover {
+  border-color: #fb7185;
+}
+
+.tile-check {
+  background: rgba(244, 63, 94, 0.55);
+  pointer-events: none;
+}
