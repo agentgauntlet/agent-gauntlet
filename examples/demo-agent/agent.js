@@ -92,9 +92,11 @@ function telemetry() {
 
 // --- Fingerprint — computed from real browser context ----------------------
 
+// --- Fingerprint — computed from real browser context ----------------------
+
 async function computeFingerprint(page) {
-  return page.evaluate(() => {
-    // Canvas fingerprint — draw text and hash the pixel data
+  return page.evaluate(async () => {
+    // Canvas fingerprint
     const canvas = document.createElement('canvas');
     canvas.width = 240; canvas.height = 60;
     const ctx = canvas.getContext('2d');
@@ -109,33 +111,30 @@ async function computeFingerprint(page) {
     for (let i = 0; i < raw.length; i++) { h = Math.imul(31, h) + raw.charCodeAt(i) | 0; }
     const canvasHash = (h >>> 0).toString(16).padStart(8, '0');
 
-    // Audio fingerprint
+    // Audio fingerprint — use OfflineAudioContext which works in headless
     let audioHash = null;
     try {
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if (AC) {
-        const ac  = new AC();
-        const osc = ac.createOscillator();
-        const ana = ac.createAnalyser();
-        const gain = ac.createGain();
-        gain.gain.value = 0;
-        osc.connect(ana); ana.connect(gain); gain.connect(ac.destination);
-        osc.start(0);
-        const buf = new Float32Array(ana.frequencyBinCount);
-        ana.getFloatFrequencyData(buf);
-        let ah = 0;
-        for (let i = 0; i < Math.min(buf.length, 128); i++) {
-          ah = Math.imul(31, ah) + Math.round(buf[i] * 1000) | 0;
-        }
-        audioHash = (ah >>> 0).toString(16).padStart(8, '0');
-        ac.close();
+      const offline = new OfflineAudioContext(1, 4096, 44100);
+      const osc     = offline.createOscillator();
+      const comp    = offline.createDynamicsCompressor();
+      osc.type = 'triangle';
+      osc.frequency.value = 10000;
+      osc.connect(comp);
+      comp.connect(offline.destination);
+      osc.start(0);
+      const rendered = await offline.startRendering();
+      const buf = rendered.getChannelData(0);
+      let ah = 0;
+      for (let i = 0; i < Math.min(buf.length, 500); i++) {
+        ah = Math.imul(31, ah) + Math.round(buf[i] * 1e8) | 0;
       }
+      audioHash = (ah >>> 0).toString(16).padStart(8, '0');
     } catch (_) {}
 
     return {
       canvasHash,
       audioHash,
-      webdriver:  navigator.webdriver || false,
+      webdriver:  navigator.webdriver,
       userAgent:  navigator.userAgent,
       screen:     { width: screen.width, height: screen.height },
       tz:         Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -162,10 +161,12 @@ async function runCv() {
   console.log(`Session: ${sessionId}`);
   console.log(`Scenario URL: ${scenarioUrl}\n`);
 
-  // 2. Launch browser and navigate to scenario page first so we can
-  //    compute real fingerprint values from the actual browser environment
+  // 2. Launch browser — add webdriver override before first navigation
   const browser = await chromium.launch({ headless: HEADLESS });
   const page    = await browser.newPage();
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+  });
   await page.goto(scenarioUrl, { waitUntil: 'networkidle' });
   console.log('Browser opened:', scenarioUrl);
 
@@ -255,6 +256,9 @@ async function runHeadless() {
   // 2. Launch browser briefly to compute real fingerprint values
   const browser = await chromium.launch({ headless: true });
   const page    = await browser.newPage();
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+  });
   await page.goto(`${BASE_URL}/v2`, { waitUntil: 'networkidle' });
   const fpResult = await submitFingerprint(sessionId, token, page);
   await browser.close();
