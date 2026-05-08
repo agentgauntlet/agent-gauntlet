@@ -1,6 +1,18 @@
 :8080 {
-    # Cart checkout (v1 + v2) — API and page routes
+    # Cart checkout (v1 + v2) — API, page, and static asset routes
     handle /v2 {
+        reverse_proxy localhost:3000
+    }
+    handle /v2.js {
+        reverse_proxy localhost:3000
+    }
+    handle /v2.min.js {
+        reverse_proxy localhost:3000
+    }
+    handle /app.js {
+        reverse_proxy localhost:3000
+    }
+    handle /styles.css {
         reverse_proxy localhost:3000
     }
     handle /api/v2/* {
