@@ -1,5 +1,8 @@
 :8080 {
-    # Cart checkout (v1 + v2)
+    # Cart checkout (v1 + v2) — API and page routes
+    handle /v2 {
+        reverse_proxy localhost:3000
+    }
     handle /api/v2/* {
         reverse_proxy localhost:3000
     }
