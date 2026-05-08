@@ -272,13 +272,8 @@ app.post('/api/v2/step', async (req, res) => {
 
   if (step === 1) {
     s.currentStep = 2;
-    if (s.mode === 'cv') {
-      return res.json({
-        ok: true, nextStep: 2,
-        task: `Choose the shipping option whose cost is between ${s.step2.lowPct}% and ${s.step2.highPct}% of your subtotal. Read the options from the page visually and submit { cvShippingName }.`,
-        risk: publicRisk(s.lastRisk || computeRisk(s.signals), s.keyTier),
-      });
-    }
+    // Always include shipping + step2 so the page can render Step 2.
+    // CV mode adds a task field for API-only agents; the page ignores it.
     return res.json({
       ok: true, nextStep: 2,
       shipping: s.shipping,
@@ -286,6 +281,9 @@ app.post('/api/v2/step', async (req, res) => {
         prompt: `Choose the shipping option whose cost is between ${s.step2.lowPct}% and ${s.step2.highPct}% of your subtotal ($${s.subtotal.toFixed(2)}).`,
         lowPct: s.step2.lowPct, highPct: s.step2.highPct,
       },
+      ...(s.mode === 'cv' && {
+        task: `Choose the shipping option whose cost is between ${s.step2.lowPct}% and ${s.step2.highPct}% of your subtotal. Read the options from the page visually and submit { cvShippingName }.`,
+      }),
       risk: publicRisk(s.lastRisk || computeRisk(s.signals), s.keyTier),
     });
   }
@@ -296,20 +294,18 @@ app.post('/api/v2/step', async (req, res) => {
     const chosen = s.shipping.find(x => x.id === answer.shippingId);
     const tax    = +(s.subtotal * 0.0875).toFixed(2);
     const total  = +(s.subtotal + (chosen ? chosen.cost : 0) + tax).toFixed(2);
-    if (s.mode === 'cv') {
-      return res.json({
-        ok: true, nextStep: 3,
-        task: 'Click the checkout button that is NOT marked as Recommended. Identify it visually on the page.',
-        risk: publicRisk(s.lastRisk || computeRisk(s.signals), s.keyTier),
-      });
-    }
+    // Always include summary + step3 so the page can render Step 3.
     return res.json({
       ok: true, nextStep: 3,
-      summary: { subtotal: s.subtotal, shippingName: chosen.name, shippingCost: chosen.cost, tax, total },
+      summary: { subtotal: s.subtotal, shippingName: chosen ? chosen.name : '', shippingCost: chosen ? chosen.cost : 0, tax, total },
       step3: {
         prompt: 'To complete your order, click the button that is NOT marked as Recommended.',
         realBtnId: s.step3.realBtnId, decoyBtnId: s.step3.decoyBtnId,
       },
+      ...(s.mode === 'cv' && {
+        task: 'Click the checkout button that is NOT marked as Recommended. Identify it visually on the page.',
+      }),
+      risk: publicRisk(s.lastRisk || computeRisk(s.signals), s.keyTier),
     });
   }
 
