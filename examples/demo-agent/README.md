@@ -2,19 +2,28 @@
 
 A minimal baseline agent that runs the **cart-checkout** scenario using Claude claude-sonnet-4-6 + Playwright.
 
-This is an *honest* agent — no evasion, no mouse spoofing. It shows a realistic starting score and demonstrates the API flow end-to-end.
+Two modes — pick based on what you're benchmarking:
+
+| Mode | How it works | What it tests |
+|---|---|---|
+| **cv** (default) | Screenshots the page, uses Claude vision to read item names and prices | Computer vision + reasoning |
+| **headless** | Reads structured JSON from the API, no page rendering needed | Logic + API integration |
 
 ## Quickstart
 
 ```bash
 cd examples/demo-agent
 npm install
-npx playwright install chromium
+npx playwright install chromium   # only needed for cv mode
 
 export ANTHROPIC_API_KEY=sk-ant-...
-export AGENTGAUNTLET_API_KEY=agg_...   # optional — get one free at agentgauntlet.ai/keys.html
+export AGENTGAUNTLET_API_KEY=agg_...   # optional — free at agentgauntlet.ai/keys.html
 
+# CV mode (default)
 node agent.js
+
+# Headless mode
+AGENT_MODE=headless node agent.js
 ```
 
 ## Options
@@ -22,9 +31,10 @@ node agent.js
 | Env var | Default | Description |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | required | Your Anthropic API key |
+| `AGENT_MODE` | `cv` | `cv` or `headless` |
 | `AGENTGAUNTLET_API_KEY` | none | Free key for leaderboard tracking + signal names |
 | `AGENTGAUNTLET_BASE_URL` | `https://agentgauntlet.ai` | Override for local self-hosted runs |
-| `HEADLESS` | `true` | Set to `false` to watch the browser |
+| `HEADLESS` | `true` | Set to `false` to watch the browser (cv mode only) |
 
 ## Running against a local instance
 
@@ -34,36 +44,47 @@ export HEADLESS=false
 node agent.js
 ```
 
-## What it does
+## CV mode — what it does
 
-1. Creates a session via the cart-checkout API
-2. Submits an honest browser fingerprint (no spoofing)
-3. Opens the scenario page in Playwright
-4. Takes a screenshot at each step and asks Claude to identify the correct item / shipping option
-5. Submits answers via the step API
-6. Prints the final risk score, tier, and signal breakdown
+1. Calls `/api/v2/session` with `{ mode: "cv" }` — server returns natural language tasks and the scenario URL, **no item IDs or prices**
+2. Opens the scenario page in Playwright and takes a screenshot
+3. Sends each screenshot to Claude with the task description
+4. Claude reads item names and prices visually from the page
+5. Submits answers by name: `{ cvItemName: "Wireless Mouse" }`, `{ cvShippingName: "Standard" }`
+6. For the final step, Claude identifies the non-recommended button visually
 
-## Expected output
+## Headless mode — what it does
+
+1. Calls `/api/v2/session` with no mode flag — server returns structured cart data with item IDs and price ranges
+2. Finds the correct item and shipping option by comparing prices mathematically
+3. Submits answers by ID: `{ itemId: "item-3" }`, `{ shippingId: "s" }`
+4. No browser or vision model needed
+
+## Expected output (CV mode)
 
 ```
+AgentGauntlet demo agent — https://agentgauntlet.ai  [CV mode]
+
 Session: sess_abc123
-Cart has 5 items, subtotal $47.50
-Step 1 prompt: Click the item whose unit price is between $12 and $18.
+Scenario URL: https://agentgauntlet.ai/v2
 
-Step 1 → selecting item: Wireless Mouse ($14.99)
-Step 2 → selecting shipping: Standard ($4.75)
+Browser opened: https://agentgauntlet.ai/v2
 
-Order summary: subtotal $47.50 + Standard $4.75 + tax $4.16 = $56.41
-Step 3 → clicking real button (not the recommended decoy)
+Step 1 task: Select the cart item whose unit price is between $12 and $18...
+Claude identified: "Wireless Mouse"
+Step 2 task: Choose the shipping option whose cost is between 5.5% and 8.8%...
+Claude identified: "Standard"
+Step 3 task: Click the checkout button that is NOT marked as Recommended...
+Claude identified non-recommended button: true
 
 ─────────────────────────────────
-RESULT
+RESULT  [mode: cv]
 Outcome:    completed
-Risk score: 62/100
-Tier:       step_up
+Risk score: 65/100
+Tier:       medium
 Action:     step_up
 Signals:    webdriver, no_canvas_hash, no_audio_hash
 ─────────────────────────────────
 ```
 
-The score will be high because we submit `webdriver: true` and no canvas/audio hashes — those are honest signals that the benchmark correctly flags. Improving the score is the challenge.
+The score reflects honest signals — `webdriver: true` and no canvas/audio hashes. Improving the score is the challenge.
