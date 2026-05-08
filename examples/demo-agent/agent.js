@@ -90,19 +90,63 @@ function telemetry() {
   return { mouseEvents: [], keyEvents: [], scrollEvents: [], dwellMs: Math.floor(800 + Math.random() * 1200) };
 }
 
-// --- Fingerprint submission -------------------------------------------------
+// --- Fingerprint — computed from real browser context ----------------------
 
-async function submitFingerprint(sessionId, token) {
-  const result = await apiPost('/api/v2/fingerprint', {
-    sessionId, token,
-    fingerprint: {
-      userAgent:  'Mozilla/5.0 (compatible; AgentGauntlet-Demo/1.0)',
-      canvasHash: null, audioHash: null, webdriver: true,
-      screen: { width: 1280, height: 800 },
-      tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    },
-  }, token);
-  return result;
+async function computeFingerprint(page) {
+  return page.evaluate(() => {
+    // Canvas fingerprint — draw text and hash the pixel data
+    const canvas = document.createElement('canvas');
+    canvas.width = 240; canvas.height = 60;
+    const ctx = canvas.getContext('2d');
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = '#f60'; ctx.fillRect(125, 1, 62, 20);
+    ctx.fillStyle = '#069'; ctx.font = '11pt Arial';
+    ctx.fillText('AgentGauntlet 🚀', 2, 15);
+    ctx.fillStyle = 'rgba(102,204,0,0.7)'; ctx.font = '18pt Arial';
+    ctx.fillText('AgentGauntlet 🚀', 4, 45);
+    const raw = canvas.toDataURL();
+    let h = 0;
+    for (let i = 0; i < raw.length; i++) { h = Math.imul(31, h) + raw.charCodeAt(i) | 0; }
+    const canvasHash = (h >>> 0).toString(16).padStart(8, '0');
+
+    // Audio fingerprint
+    let audioHash = null;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) {
+        const ac  = new AC();
+        const osc = ac.createOscillator();
+        const ana = ac.createAnalyser();
+        const gain = ac.createGain();
+        gain.gain.value = 0;
+        osc.connect(ana); ana.connect(gain); gain.connect(ac.destination);
+        osc.start(0);
+        const buf = new Float32Array(ana.frequencyBinCount);
+        ana.getFloatFrequencyData(buf);
+        let ah = 0;
+        for (let i = 0; i < Math.min(buf.length, 128); i++) {
+          ah = Math.imul(31, ah) + Math.round(buf[i] * 1000) | 0;
+        }
+        audioHash = (ah >>> 0).toString(16).padStart(8, '0');
+        ac.close();
+      }
+    } catch (_) {}
+
+    return {
+      canvasHash,
+      audioHash,
+      webdriver:  navigator.webdriver || false,
+      userAgent:  navigator.userAgent,
+      screen:     { width: screen.width, height: screen.height },
+      tz:         Intl.DateTimeFormat().resolvedOptions().timeZone,
+    };
+  });
+}
+
+async function submitFingerprint(sessionId, token, page) {
+  const fingerprint = await computeFingerprint(page);
+  console.log(`Fingerprint: canvas=${fingerprint.canvasHash} audio=${fingerprint.audioHash || 'null'} webdriver=${fingerprint.webdriver}`);
+  return apiPost('/api/v2/fingerprint', { sessionId, token, fingerprint }, token);
 }
 
 // ===========================================================================
@@ -118,19 +162,21 @@ async function runCv() {
   console.log(`Session: ${sessionId}`);
   console.log(`Scenario URL: ${scenarioUrl}\n`);
 
-  // 2. Submit fingerprint
-  const fpResult = await submitFingerprint(sessionId, token);
-  if (fpResult.action === 'block') {
-    console.log('Blocked at fingerprint stage.');
-    printResult(fpResult.risk, 'blocked', 'cv');
-    return;
-  }
-
-  // 3. Open browser and screenshot the scenario page
+  // 2. Launch browser and navigate to scenario page first so we can
+  //    compute real fingerprint values from the actual browser environment
   const browser = await chromium.launch({ headless: HEADLESS });
   const page    = await browser.newPage();
   await page.goto(scenarioUrl, { waitUntil: 'networkidle' });
   console.log('Browser opened:', scenarioUrl);
+
+  // 3. Compute and submit fingerprint from the real browser context
+  const fpResult = await submitFingerprint(sessionId, token, page);
+  if (fpResult.action === 'block') {
+    await browser.close();
+    console.log('Blocked at fingerprint stage.');
+    printResult(fpResult.risk, 'blocked', 'cv');
+    return;
+  }
 
   // --- Step 1: identify item visually --------------------------------------
   const shot1 = await page.screenshot({ fullPage: true });
@@ -206,8 +252,12 @@ async function runHeadless() {
   console.log(`Cart has ${cart.length} items, subtotal $${subtotal}`);
   console.log(`Step 1 prompt: ${step1Meta.prompt}\n`);
 
-  // 2. Submit fingerprint
-  const fpResult = await submitFingerprint(sessionId, token);
+  // 2. Launch browser briefly to compute real fingerprint values
+  const browser = await chromium.launch({ headless: true });
+  const page    = await browser.newPage();
+  await page.goto(`${BASE_URL}/v2`, { waitUntil: 'networkidle' });
+  const fpResult = await submitFingerprint(sessionId, token, page);
+  await browser.close();
   if (fpResult.action === 'block') {
     console.log('Blocked at fingerprint stage.');
     printResult(fpResult.risk, 'blocked', 'headless');
