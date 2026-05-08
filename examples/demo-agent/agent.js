@@ -71,8 +71,8 @@ function printResult(risk, outcome, mode) {
 async function askClaude(screenshotBuf, task) {
   const msg = await anthropic.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 256,
-    system: 'You are a web agent. Look at the screenshot and answer the question with the minimum text required — no explanation.',
+    max_tokens: 64,
+    system: 'You are a web agent. Reply with the shortest possible answer — a single word or short phrase. No explanation, no calculations, no markdown.',
     messages: [{
       role: 'user',
       content: [
@@ -81,7 +81,11 @@ async function askClaude(screenshotBuf, task) {
       ],
     }],
   });
-  return msg.content[0].text.trim();
+  // Strip markdown bold markers and take the last non-empty line in case
+  // Claude still includes reasoning before the final answer.
+  const raw = msg.content[0].text.trim();
+  const clean = raw.replace(/\*\*/g, '').split('\n').map(l => l.trim()).filter(Boolean);
+  return clean[clean.length - 1] || raw;
 }
 
 // --- Telemetry stub (honest — no mouse data) --------------------------------
@@ -205,7 +209,7 @@ async function runCv() {
   console.log(`\nStep 2 task: ${tasks.step2}`);
 
   const shippingAnswer = await askClaude(shot2,
-    `${tasks.step2}\nLook at the shipping options shown on the page. Reply with ONLY the exact name of the matching shipping option (e.g. "Standard", "Express", "Overnight").`
+    `${tasks.step2}\nLook at the shipping option cards on the page. Reply with ONLY the option name (one word, e.g. Standard or Express or Overnight). Do not explain.`
   );
   console.log(`Claude identified: "${shippingAnswer}"`);
 
@@ -219,7 +223,7 @@ async function runCv() {
   console.log(`\nStep 3 task: ${tasks.step3}`);
 
   const btnAnswer = await askClaude(shot3,
-    `${tasks.step3}\nLook at the checkout buttons on the page. One button is marked "Recommended" and one is not. Reply with ONLY the exact label text of the button that is NOT marked "Recommended".`
+    `${tasks.step3}\nLook at the checkout buttons on the page. One is marked "Recommended". Reply with ONLY the exact label text of the OTHER button (the one NOT marked Recommended). No explanation.`
   );
   console.log(`Claude identified non-recommended button: "${btnAnswer}"`);
 
