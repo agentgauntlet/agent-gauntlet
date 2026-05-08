@@ -180,8 +180,13 @@ async function runCv() {
   }
 
   // --- Step 1: identify item visually --------------------------------------
-  // Wait for cart items to render (page uses client-side JS to populate them)
-  await page.waitForSelector('#cart-items li', { timeout: 15000 });
+  // Wait for cart items to render. If the page shows an error instead (e.g.
+  // session not found after a server restart), this will surface that message.
+  await page.waitForSelector('#cart-items li', { timeout: 15000 }).catch(async () => {
+    const statusText = await page.$eval('#status', el => el.textContent).catch(() => '(unknown)');
+    await browser.close();
+    throw new Error(`Cart never rendered. Page status: "${statusText}" — the session may have been lost due to a server restart. Re-run the agent.`);
+  });
   const shot1 = await page.screenshot({ fullPage: true });
   console.log(`\nStep 1 task: ${tasks.step1}`);
 
