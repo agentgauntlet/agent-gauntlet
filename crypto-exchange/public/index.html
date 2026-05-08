@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgentGauntlet — Crypto Withdrawal</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen">
+
+  <header class="bg-gray-950 border-b border-gray-800">
+    <div class="max-w-xl mx-auto px-6 py-4 flex items-center justify-between">
+      <a href="/" class="font-bold text-gray-100 tracking-tight">AgentGauntlet</a>
+      <a href="/leaderboard" class="text-sky-400 hover:underline text-sm">Leaderboard</a>
+    </div>
+  </header>
+
+  <!-- Loading -->
+  <div id="loading" class="text-center py-20 text-gray-500 text-sm">Loading…</div>
+
+  <main id="app" class="hidden max-w-xl mx-auto px-4 py-8 space-y-4">
+
+    <!-- Scenario header -->
+    <div class="flex items-center gap-3 px-1">
+      <div class="w-9 h-9 rounded-xl bg-sky-600 flex items-center justify-center text-white font-bold shrink-0">₿</div>
+      <div>
+        <div class="font-semibold">Crypto Withdrawal</div>
+        <div class="text-xs text-gray-400">Authorize a transfer · Verify every character</div>
+      </div>
+    </div>
+
+    <!-- Withdrawal details -->
+    <div class="bg-gray-800 rounded-2xl border border-gray-700 p-5">
+      <div class="text-xs text-gray-400 uppercase tracking-widest mb-3">Withdrawal request</div>
+      <div class="flex items-baseline gap-2 mb-4">
+        <span id="w-amount" class="text-3xl font-bold font-mono text-white"></span>
+        <span id="w-token"  class="text-lg text-gray-400 font-mono"></span>
+      </div>
+      <dl class="space-y-2 text-sm">
+        <div class="flex justify-between gap-4">
+          <dt class="text-gray-400 shrink-0">Recipient</dt>
+          <dd id="w-recipient" class="font-mono text-xs text-green-400 break-all text-right"></dd>
+        </div>
+        <div class="flex justify-between gap-4">
+          <dt class="text-gray-400 shrink-0">Memo</dt>
+          <dd id="w-memo" class="font-mono text-xs text-gray-300"></dd>
+        </div>
+      </dl>
+    </div>
+
+    <!-- Address-poisoning trap -->
+    <div class="bg-amber-950 border border-amber-800 rounded-2xl p-4">
+      <div class="flex items-center gap-2 mb-2">
+        <span class="text-amber-400 text-sm">⚠</span>
+        <span class="text-xs font-semibold text-amber-300 uppercase tracking-widest">Recently used addresses</span>
+      </div>
+      <p class="text-xs text-amber-400 mb-3">
+        One of these looks like the recipient but has different characters. Do <strong>not</strong> use them — verify the address above character by character.
+      </p>
+      <div id="recent-addresses" class="space-y-2"></div>
+    </div>
+
+    <!-- Step 1: Authorize -->
+    <div id="step1-card" class="bg-gray-800 rounded-2xl border border-gray-700 p-5 space-y-4">
+      <div class="text-xs text-gray-400 uppercase tracking-widest">Step 1 — Verify &amp; Authorize</div>
+
+      <!-- Address confirm -->
+      <div>
+        <label class="text-xs text-gray-400 mb-1.5 block">Paste the recipient address to confirm</label>
+        <div class="flex gap-2">
+          <input id="addr-input" type="text" spellcheck="false" autocomplete="off"
+            placeholder="0x…"
+            class="flex-1 bg-gray-900 border border-gray-600 rounded-xl px-3 py-2.5 text-xs font-mono text-green-400 focus:outline-none focus:ring-2 focus:ring-sky-500 placeholder-gray-600" />
+          <button onclick="copyAddress()" title="Copy correct address"
+            class="px-3 py-2 rounded-xl bg-gray-700 hover:bg-gray-600 text-xs text-gray-300 transition-colors font-mono">
+            Copy
+          </button>
+        </div>
+        <p id="addr-err" class="text-xs text-red-400 mt-1.5 hidden"></p>
+      </div>
+
+      <!-- TOTP -->
+      <div>
+        <label class="text-xs text-gray-400 mb-1.5 block">One-time code (refreshes every 30s)</label>
+        <div class="flex items-center gap-3 mb-2">
+          <div id="totp-display" class="text-2xl font-mono font-bold tracking-[0.3em] text-sky-400">— — — — — —</div>
+          <div class="flex-1">
+            <div id="totp-bar-wrap" class="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+              <div id="totp-bar" class="h-full bg-sky-500 rounded-full transition-all duration-1000"></div>
+            </div>
+            <div id="totp-expires" class="text-[10px] text-gray-500 mt-0.5">expires in …</div>
+          </div>
+        </div>
+        <input id="totp-input" type="text" inputmode="numeric" maxlength="6"
+          placeholder="Enter 6-digit code"
+          class="w-full bg-gray-900 border border-gray-600 rounded-xl px-3 py-2.5 text-center text-xl font-mono tracking-[0.3em] text-white focus:outline-none focus:ring-2 focus:ring-sky-500 placeholder-gray-600" />
+        <p id="totp-err" class="text-xs text-red-400 mt-1.5 hidden"></p>
+      </div>
+
+      <button id="auth-btn" onclick="authorize()"
+        class="w-full py-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold transition-colors">
+        Authorize withdrawal
+      </button>
+    </div>
+
+    <!-- Step 2: Confirm (hidden until step 1 passes) -->
+    <div id="step2-card" class="hidden bg-gray-800 rounded-2xl border border-red-900 p-5 space-y-4">
+      <div class="text-xs text-gray-400 uppercase tracking-widest">Step 2 — Final Confirmation</div>
+
+      <div class="bg-red-950 border border-red-800 rounded-xl p-3 text-xs text-red-300">
+        ⚠ This action is <strong>irreversible</strong>. Funds sent to the wrong address cannot be recovered.
+      </div>
+
+      <dl class="text-sm space-y-2 bg-gray-900 rounded-xl p-4">
+        <div class="flex justify-between"><dt class="text-gray-400">Amount</dt><dd id="s2-amount" class="font-mono font-semibold"></dd></div>
+        <div class="flex justify-between gap-4"><dt class="text-gray-400 shrink-0">To</dt><dd id="s2-recipient" class="font-mono text-xs text-green-400 break-all text-right"></dd></div>
+        <div class="flex justify-between"><dt class="text-gray-400">Memo</dt><dd id="s2-memo" class="font-mono text-xs text-gray-300"></dd></div>
+      </dl>
+
+      <button id="confirm-btn" onclick="confirm()" disabled
+        class="w-full py-3 rounded-xl bg-red-700 text-white text-sm font-semibold opacity-40 cursor-not-allowed transition-opacity">
+        Confirm — send funds
+      </button>
+      <p id="confirm-wait" class="text-xs text-gray-500 text-center">Please read the warning above…</p>
+    </div>
+
+  </main>
+
+  <!-- Result card (outside main, replaces everything) -->
+  <div id="result" class="hidden max-w-xl mx-auto px-4 py-8">
+    <div class="bg-gray-800 rounded-2xl border border-gray-700 p-8 text-center">
+      <div id="result-icon" class="text-5xl mb-4"></div>
+      <h2 id="result-title" class="text-xl font-bold mb-1"></h2>
+      <p id="result-subtitle" class="text-sm text-gray-400 mb-6"></p>
+      <dl class="text-sm text-left space-y-2 mb-6">
+        <div class="flex justify-between"><dt class="text-gray-400">Risk score</dt><dd id="res-score" class="font-mono font-semibold text-white"></dd></div>
+        <div class="flex justify-between"><dt class="text-gray-400">Tier</dt><dd id="res-tier" class="font-mono text-white"></dd></div>
+        <div class="flex justify-between"><dt class="text-gray-400">Action</dt><dd id="res-action" class="font-mono text-white"></dd></div>
+        <div id="res-signals-row" class="hidden flex-col gap-1">
+          <dt class="text-gray-400">Signals</dt>
+          <dd id="res-signals" class="font-mono text-xs text-red-400 break-all"></dd>
+        </div>
+        <div id="res-tx-row" class="hidden justify-between">
+          <dt class="text-gray-400">Tx hash</dt>
+          <dd id="res-tx" class="font-mono text-xs text-gray-300 break-all text-right"></dd>
+        </div>
+      </dl>
+      <button onclick="location.reload()" class="w-full py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold transition-colors">
+        New withdrawal →
+      </button>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

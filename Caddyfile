@@ -65,7 +65,11 @@
         reverse_proxy localhost:3004
     }
 
-    # Crypto exchange
+    # Crypto exchange — UI at /crypto/, API at /api/crypto/*
+    handle /crypto* {
+        uri strip_prefix /crypto
+        reverse_proxy localhost:3005
+    }
     handle /api/crypto/* {
         reverse_proxy localhost:3005
     }
