@@ -44,6 +44,7 @@ async function initSchema() {
       risk_tier    TEXT    NOT NULL,
       elapsed_ms   INTEGER,
       had_step_up  INTEGER NOT NULL DEFAULT 0,
+      agent_mode   TEXT    NOT NULL DEFAULT 'headless',
       ja3_hash     TEXT,
       user_agent   TEXT,
       api_key      TEXT
@@ -128,6 +129,9 @@ async function initSchema() {
     'ALTER TABLE gauntlet.api_keys ADD COLUMN IF NOT EXISTS oauth_provider TEXT',
     'ALTER TABLE gauntlet.api_keys ADD COLUMN IF NOT EXISTS oauth_id       TEXT',
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_oauth ON gauntlet.api_keys(oauth_provider, oauth_id) WHERE oauth_provider IS NOT NULL',
+    // CV mode column — safe to run on existing tables
+    "ALTER TABLE gauntlet.sessions ADD COLUMN IF NOT EXISTS agent_mode TEXT NOT NULL DEFAULT 'headless'",
+    'CREATE INDEX IF NOT EXISTS idx_sessions_mode ON gauntlet.sessions(agent_mode)',
   ];
   for (const sql of stmts) await pool.query(sql);
 }

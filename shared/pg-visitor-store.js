@@ -123,13 +123,14 @@ class PgVisitorStore extends VisitorStore {
         await client.query(`
           INSERT INTO ${G}.sessions
             (session_id, visitor_id, scenario, started_at, ended_at, outcome,
-             risk_score, risk_tier, elapsed_ms, had_step_up, ja3_hash, user_agent, api_key)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+             risk_score, risk_tier, elapsed_ms, had_step_up, agent_mode, ja3_hash, user_agent, api_key)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
           ON CONFLICT (session_id) DO NOTHING
         `, [
           visit.sessionId, visitorId, visit.scenario || 'unknown',
           now - (visit.elapsedMs || 0), now, visit.outcome,
           visit.score, visit.tier, visit.elapsedMs || null, hadStepUp,
+          visit.agentMode || 'headless',
           attrs.ja3Hash   || null,
           attrs.userAgent ? attrs.userAgent.slice(0, 200) : null,
           attrs.apiKey    || null,

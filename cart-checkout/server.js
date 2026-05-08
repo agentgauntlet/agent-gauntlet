@@ -142,6 +142,22 @@ function makeV2Session() {
 
 app.get('/v2', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'v2.html')));
 
+// Resolve a CV agent's named selection to a cart item (case-insensitive partial match)
+function resolveCvItem(name) {
+  if (!name) return null;
+  const q = name.toLowerCase();
+  return CART.find(i => i.name.toLowerCase().includes(q) || q.includes(i.name.toLowerCase())) || null;
+}
+
+// Resolve a CV agent's named selection to a shipping option
+function resolveCvShipping(name) {
+  if (!name) return null;
+  const q = name.toLowerCase();
+  return SHIPPING.find(s => s.name.toLowerCase().includes(q) || q.includes(s.name.toLowerCase())) || null;
+}
+
+const APP_BASE_URL = process.env.APP_URL || 'https://agentgauntlet.ai';
+
 app.post('/api/v2/session', attachApiKey, (req, res) => {
   pruneSessions();
   const headerFlags = scoreHeaders(req.headers);
@@ -153,6 +169,7 @@ app.post('/api/v2/session', attachApiKey, (req, res) => {
     return res.status(403).json({ ok: false, action: 'block', stage: 'session', risk: publicRisk(risk, req.keyTier), signals: initSignals });
   }
 
+  const cvMode = req.body && req.body.mode === 'cv';
   const s = makeV2Session();
   s.apiKey      = req.apiKey;
   s.keyTier     = req.keyTier;
@@ -160,9 +177,26 @@ app.post('/api/v2/session', attachApiKey, (req, res) => {
   s.tlsFlags    = tlsFlags;
   s.tlsHash     = req.tlsFingerprint ? req.tlsFingerprint.hash : null;
   s.signals     = initSignals;
+  s.mode        = cvMode ? 'cv' : 'headless';
+
+  if (cvMode) {
+    return res.json({
+      sessionId: s.id, token: s.token,
+      mode: 'cv',
+      scenarioUrl: `${APP_BASE_URL}/v2`,
+      tasks: {
+        step1: `Select the cart item whose unit price is between $${s.step1.low} and $${s.step1.high}. Read the price from the page visually.`,
+        step2: `Choose the shipping option whose cost percentage of the order subtotal falls between ${s.step2.lowPct}% and ${s.step2.highPct}%. Read the options from the page visually.`,
+        step3: 'Click the checkout button that is NOT marked as Recommended. Identify it visually.',
+      },
+      requireFingerprint: true,
+      risk: publicRisk(risk, s.keyTier, s),
+    });
+  }
 
   res.json({
     sessionId: s.id, token: s.token,
+    mode: 'headless',
     cart: s.cart, subtotal: s.subtotal,
     step1: {
       prompt: `Click the item whose unit price is between $${s.step1.low} and $${s.step1.high}.`,
@@ -189,6 +223,18 @@ app.post('/api/v2/step', async (req, res) => {
   accumulateTelemetry(s, telemetry);
   visitorStore.recordTelemetrySnapshot(s.id, s.currentStep, telemetry);
 
+  // CV mode: resolve named selections to IDs before signal evaluation
+  if (s.mode === 'cv') {
+    if (step === 1 && answer.cvItemName) {
+      const resolved = resolveCvItem(answer.cvItemName);
+      answer.itemId = resolved ? resolved.id : '__cv_unresolved__';
+    }
+    if (step === 2 && answer.cvShippingName) {
+      const resolved = resolveCvShipping(answer.cvShippingName);
+      answer.shippingId = resolved ? resolved.id : '__cv_unresolved__';
+    }
+  }
+
   const stepSignals = [];
   if (step === 1) {
     if (answer.honeypotEmail || answer.honeypotPromo) stepSignals.push('honeypot_filled');
@@ -208,6 +254,13 @@ app.post('/api/v2/step', async (req, res) => {
 
   if (step === 1) {
     s.currentStep = 2;
+    if (s.mode === 'cv') {
+      return res.json({
+        ok: true, nextStep: 2,
+        task: `Choose the shipping option whose cost is between ${s.step2.lowPct}% and ${s.step2.highPct}% of your subtotal. Read the options from the page visually and submit { cvShippingName }.`,
+        risk: publicRisk(s.lastRisk || computeRisk(s.signals), s.keyTier),
+      });
+    }
     return res.json({
       ok: true, nextStep: 2,
       shipping: s.shipping,
@@ -224,7 +277,14 @@ app.post('/api/v2/step', async (req, res) => {
     s.currentStep = 3;
     const chosen = s.shipping.find(x => x.id === answer.shippingId);
     const tax    = +(s.subtotal * 0.0875).toFixed(2);
-    const total  = +(s.subtotal + chosen.cost + tax).toFixed(2);
+    const total  = +(s.subtotal + (chosen ? chosen.cost : 0) + tax).toFixed(2);
+    if (s.mode === 'cv') {
+      return res.json({
+        ok: true, nextStep: 3,
+        task: 'Click the checkout button that is NOT marked as Recommended. Identify it visually on the page.',
+        risk: publicRisk(s.lastRisk || computeRisk(s.signals), s.keyTier),
+      });
+    }
     return res.json({
       ok: true, nextStep: 3,
       summary: { subtotal: s.subtotal, shippingName: chosen.name, shippingCost: chosen.cost, tax, total },
@@ -239,7 +299,8 @@ app.post('/api/v2/step', async (req, res) => {
 });
 
 app.post('/api/v2/checkout', async (req, res) => {
-  const { sessionId, token, clickedBtnId, telemetry } = req.body || {};
+  const { sessionId, token, telemetry } = req.body || {};
+  let { clickedBtnId, cvClickedNonRecommended } = req.body || {};
   const s = sessions.get(sessionId);
   if (!s || s.token !== token)  return res.status(403).json({ ok: false, reason: 'invalid_session' });
   if (s.used)                   return res.status(403).json({ ok: false, reason: 'session_used' });
@@ -254,8 +315,15 @@ app.post('/api/v2/checkout', async (req, res) => {
   visitorStore.recordTelemetrySnapshot(s.id, 3, telemetry);
 
   const checkoutSignals = [];
-  if (clickedBtnId === s.step3.decoyBtnId)      checkoutSignals.push('clicked_recommended_decoy');
-  else if (clickedBtnId !== s.step3.realBtnId)  checkoutSignals.push('unknown_button');
+
+  // CV mode: agent submits { cvClickedNonRecommended: true/false }
+  // Headless mode: agent submits { clickedBtnId }
+  if (s.mode === 'cv') {
+    if (cvClickedNonRecommended === false) checkoutSignals.push('clicked_recommended_decoy');
+  } else {
+    if (clickedBtnId === s.step3.decoyBtnId)      checkoutSignals.push('clicked_recommended_decoy');
+    else if (clickedBtnId !== s.step3.realBtnId)  checkoutSignals.push('unknown_button');
+  }
 
   const elapsed = Date.now() - s.createdAt;
   const c       = s.cumulative;

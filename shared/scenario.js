@@ -337,7 +337,8 @@ function createScenario({
       { handle: s.handle, ja3Hash: s.tlsHash, userAgent: (s.fingerprint && s.fingerprint.userAgent) || null,
         apiKey: s.apiKey || null },
       { sessionId: s.id, scenario, outcome, score: risk.score, tier: risk.tier, signals: sigs,
-        hadStepUp: !!s.requiresStepUp || s.stepUpPassed, elapsedMs: Date.now() - s.createdAt },
+        hadStepUp: !!s.requiresStepUp || s.stepUpPassed, elapsedMs: Date.now() - s.createdAt,
+        agentMode: s.mode || 'headless' },
     );
     visitorStore.clearSession(s.id);
   }
