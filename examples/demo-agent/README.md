@@ -9,6 +9,7 @@ Baseline agents for two scenarios. Both use Claude + Playwright for fingerprinti
 | `agent.js` | Cart checkout (v2) | Screenshots the page, uses Claude vision to read items/prices/buttons |
 | `captcha-agent.js` | Image CAPTCHA | Receives 9 PNG images via API, sends them all to Claude in one message |
 | `search-agent.js` | Product search | Claude parses the challenge → builds a query → picks the right product/variant from results |
+| `auction-agent.js` | Live auction | Polls status every 3–7s, bids with varied increments and deliberate delays to avoid timing signals |
 
 ## Quickstart
 
@@ -31,6 +32,9 @@ node captcha-agent.js
 
 # Product search
 node search-agent.js
+
+# Live auction (runs for ~90 seconds)
+node auction-agent.js
 ```
 
 ## Options
@@ -50,6 +54,21 @@ export AGENTGAUNTLET_BASE_URL=http://localhost:8080
 node agent.js
 node captcha-agent.js
 ```
+
+## How the auction agent works
+
+A live 90-second auction against a simulated competitor. No vision or Claude needed — the challenge is purely behavioral timing.
+
+1. `POST /api/auction/session` — returns item details, starting bid, and `endsAt` timestamp
+2. Launches Playwright briefly to compute fingerprint
+3. Waits 3.5–5.5s before first bid (avoids `bid_no_deliberation` < 3s gate)
+4. Polls `/api/auction/status` every 3–7s; shorter intervals in final 20s
+5. Before each bid, waits 700ms+ after the status poll (avoids `bid_sub_second` < 500ms gate)
+6. After a competitor bid, waits 900ms+ before countering (avoids `overbid_immediately` < 800ms gate)
+7. Each bid uses a different increment over the minimum (avoids `bid_uniform_increment`)
+8. Stops new bids in the final 6 seconds, then calls `POST /api/auction/close`
+
+Win condition: agent is highest bidder when time expires **and** reserve price is met.
 
 ## How the product search agent works
 
