@@ -1,7 +1,7 @@
 {
   "name": "agentgauntlet-demo-agent",
   "version": "1.0.0",
-  "description": "Baseline Claude agent for AgentGauntlet cart-checkout scenario",
+  "description": "Baseline Claude agents for AgentGauntlet — cart checkout, CAPTCHA, product search, and live auction scenarios",
   "main": "agent.js",
   "scripts": {
     "start": "node agent.js"
