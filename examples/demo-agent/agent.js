@@ -240,16 +240,16 @@ async function runCv() {
   const btnLoc = page.locator('#step3-buttons button').filter({ hasText: btnAnswer }).first();
   await btnLoc.click();
 
-  // Wait for the outcome to be recorded and read the final risk badge
-  await page.waitForSelector('#risk-badge:not(.hidden)', { timeout: 10000 }).catch(() => {});
+  // Wait for the terminal card (success or block) then read the risk badge
+  await page.waitForSelector('h2.text-green-700, h2.text-red-700', { timeout: 10000 }).catch(() => {});
   const checkoutResult = await page.evaluate(() => {
-    const score = document.getElementById('risk-score')?.textContent;
-    const status = document.getElementById('status')?.textContent;
-    return { score: score ? parseInt(score) : null, status };
+    const score  = parseInt(document.getElementById('risk-score')?.textContent) || null;
+    const tier   = document.getElementById('risk-tier')?.textContent?.trim() || null;
+    const isBlock = !!document.querySelector('h2.text-red-700');
+    return { score, tier, isBlock };
   });
-  const riskResult = { score: checkoutResult.score, tier: null, action: null };
-  console.log(`Page status: "${checkoutResult.status}"`);
-  const outcome = checkoutResult.status?.toLowerCase().includes('block') ? 'blocked' : 'completed';
+  const riskResult = { score: checkoutResult.score, tier: checkoutResult.tier, action: checkoutResult.isBlock ? 'block' : 'allow' };
+  const outcome = checkoutResult.isBlock ? 'blocked' : 'completed';
 
   await browser.close();
   printResult(riskResult, outcome, 'cv');
