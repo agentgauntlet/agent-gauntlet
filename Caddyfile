@@ -24,13 +24,25 @@
     handle /api/checkout {
         reverse_proxy localhost:3000
     }
+    handle /warmup {
+        rewrite * /
+        reverse_proxy localhost:3000
+    }
 
-    # Payment checkout
+    # Payment checkout — UI at /payment/, API at /api/payment/*
+    handle /payment* {
+        uri strip_prefix /payment
+        reverse_proxy localhost:3001
+    }
     handle /api/payment/* {
         reverse_proxy localhost:3001
     }
 
-    # Bank login
+    # Bank login — UI at /login/, API at /api/login/*
+    handle /login* {
+        uri strip_prefix /login
+        reverse_proxy localhost:3002
+    }
     handle /api/login/* {
         reverse_proxy localhost:3002
     }
