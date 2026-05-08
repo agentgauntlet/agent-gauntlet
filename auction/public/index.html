@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgentGauntlet — Live Auction</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+
+  <header class="bg-white border-b border-gray-200">
+    <div class="max-w-2xl mx-auto px-6 py-4 flex items-center justify-between">
+      <a href="/" class="font-bold text-gray-900 tracking-tight">AgentGauntlet</a>
+      <a href="/leaderboard" class="text-orange-600 hover:underline text-sm">Leaderboard</a>
+    </div>
+  </header>
+
+  <main class="max-w-2xl mx-auto px-4 py-8">
+
+    <!-- Loading -->
+    <div id="loading" class="text-center py-20 text-gray-400 text-sm">Starting auction…</div>
+
+    <!-- Auction layout -->
+    <div id="auction" class="hidden space-y-5">
+
+      <!-- Item card -->
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+        <div class="flex items-start justify-between gap-4">
+          <div class="flex-1">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="live-badge text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-orange-100 text-orange-600">● Live</span>
+              <span id="item-category" class="text-[11px] text-gray-400 uppercase tracking-widest"></span>
+            </div>
+            <h1 id="item-name" class="text-lg font-bold text-gray-900 mb-1"></h1>
+            <p id="item-desc" class="text-sm text-gray-500 leading-relaxed"></p>
+          </div>
+          <!-- Countdown -->
+          <div class="shrink-0 text-center">
+            <div id="timer" class="text-4xl font-mono font-bold tabular-nums text-orange-500">1:30</div>
+            <div class="text-[10px] text-gray-400 uppercase tracking-widest mt-0.5">remaining</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bid status -->
+      <div id="bid-status" class="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <div class="text-xs text-gray-400 uppercase tracking-widest mb-0.5">Current bid</div>
+            <div class="flex items-baseline gap-2">
+              <span id="current-bid" class="text-3xl font-bold font-mono">$—</span>
+              <span id="current-bidder" class="text-sm text-gray-400"></span>
+            </div>
+          </div>
+          <div id="status-badge" class="text-xs font-semibold px-3 py-1 rounded-full bg-gray-100 text-gray-400">Waiting…</div>
+        </div>
+
+        <!-- Bid history -->
+        <div id="bid-feed" class="space-y-1 mb-5 min-h-[48px]"></div>
+
+        <!-- Bid controls -->
+        <div id="bid-controls">
+          <div class="text-xs text-gray-400 mb-2">Place a bid</div>
+          <div id="quick-bids" class="flex gap-2 mb-3"></div>
+          <div class="flex gap-2">
+            <input id="custom-amount" type="number" placeholder="Custom amount"
+              class="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+            <button id="custom-btn" onclick="placeBid(parseInt(document.getElementById('custom-amount').value))"
+              class="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-sm font-semibold transition-colors">
+              Bid
+            </button>
+          </div>
+          <p id="bid-msg" class="text-xs text-red-500 mt-2 hidden"></p>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Result card -->
+    <div id="result" class="hidden bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">
+      <div id="result-icon" class="text-5xl mb-4"></div>
+      <h2 id="result-title" class="text-xl font-bold mb-1"></h2>
+      <p id="result-subtitle" class="text-sm text-gray-500 mb-6"></p>
+      <dl class="text-sm text-left space-y-2 mb-6">
+        <div class="flex justify-between"><dt class="text-gray-500">Risk score</dt><dd id="res-score" class="font-mono font-semibold"></dd></div>
+        <div class="flex justify-between"><dt class="text-gray-500">Tier</dt><dd id="res-tier" class="font-mono"></dd></div>
+        <div class="flex justify-between"><dt class="text-gray-500">Action</dt><dd id="res-action" class="font-mono"></dd></div>
+        <div id="res-signals-row" class="hidden flex-col gap-1">
+          <dt class="text-gray-500">Signals</dt>
+          <dd id="res-signals" class="font-mono text-xs text-red-600 break-all"></dd>
+        </div>
+        <div id="res-conf-row" class="hidden justify-between">
+          <dt class="text-gray-500">Confirmation</dt>
+          <dd id="res-conf" class="font-mono text-xs"></dd>
+        </div>
+      </dl>
+      <button onclick="location.reload()" class="w-full py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-sm font-semibold transition-colors">
+        New auction →
+      </button>
+    </div>
+
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>

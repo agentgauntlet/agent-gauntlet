@@ -52,7 +52,11 @@
         reverse_proxy localhost:3003
     }
 
-    # Auction
+    # Auction — UI at /auction/, API at /api/auction/*
+    handle /auction* {
+        uri strip_prefix /auction
+        reverse_proxy localhost:3004
+    }
     handle /api/auction/* {
         reverse_proxy localhost:3004
     }

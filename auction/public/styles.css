@@ -1,0 +1,13 @@
+.live-badge {
+  animation: pulse-badge 2s ease-in-out infinite;
+}
+
+@keyframes pulse-badge {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
+}
+
+#timer {
+  font-variant-numeric: tabular-nums;
+  transition: color 0.5s;
+}
