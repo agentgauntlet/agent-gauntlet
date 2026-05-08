@@ -3,6 +3,11 @@ name: Deploy
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'examples/**'
+      - 'doc/**'
+      - '*.md'
+      - '.gitignore'
   workflow_dispatch:        # allow manual deploy from the Actions UI
 
 # Only run one deploy at a time. Cancel in-progress runs if a newer push lands.
