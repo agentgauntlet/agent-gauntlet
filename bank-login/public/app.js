@@ -357,11 +357,16 @@ async function collectFingerprint() {
     actx.close().catch(() => {});
   } catch(e) { fp.audioHash = null; }
 
-  // Notifications mismatch (headless Chrome indicator)
+  // Notifications API inconsistency (headless Chrome indicator)
+  // Checks for a real browser API contradiction, not chrome.runtime presence
+  // (chrome.runtime is undefined in normal web pages, causing false positives)
   try {
-    fp.notifMismatch = Notification.permission === 'default' &&
-      typeof window.chrome !== 'undefined' &&
-      typeof window.chrome.runtime === 'undefined';
+    if (navigator.permissions && typeof Notification !== 'undefined') {
+      const perm = await navigator.permissions.query({ name: 'notifications' });
+      fp.notifMismatch = Notification.permission === 'denied' && perm.state === 'prompt';
+    } else {
+      fp.notifMismatch = false;
+    }
   } catch(e) { fp.notifMismatch = false; }
 
   // rAF frame count (unthrottled in headless)
