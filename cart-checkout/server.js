@@ -186,7 +186,7 @@ app.post('/api/v2/session', attachApiKey, (req, res) => {
       scenarioUrl: `${APP_BASE_URL}/v2?sid=${encodeURIComponent(s.id)}&tok=${encodeURIComponent(s.token)}`,
       tasks: {
         step1: `Select the cart item whose unit price is between $${s.step1.low} and $${s.step1.high}. Read the price from the page visually.`,
-        step2: `Choose the shipping option whose cost percentage of the order subtotal falls between ${s.step2.lowPct}% and ${s.step2.highPct}%. Read the options from the page visually.`,
+        step2: `Choose the shipping option whose cost is between $${(s.subtotal * s.step2.lowPct / 100).toFixed(2)} and $${(s.subtotal * s.step2.highPct / 100).toFixed(2)}. Look at the dollar amounts on each shipping card and pick the matching one.`,
         step3: 'Click the checkout button that is NOT marked as Recommended. Identify it visually.',
       },
       requireFingerprint: true,

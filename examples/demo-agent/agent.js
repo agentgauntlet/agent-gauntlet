@@ -217,8 +217,17 @@ async function runCv() {
   const shippingLoc = page.locator('#shipping-options').getByText(shippingAnswer, { exact: false }).first();
   await shippingLoc.click();
 
-  // --- Step 3: wait for checkout buttons, identify non-recommended, click --
-  await page.waitForSelector('section[data-step="3"]:not([hidden])', { timeout: 10000 });
+  // --- Step 3: wait for checkout buttons (or terminal block card) -----------
+  await page.waitForSelector(
+    'section[data-step="3"]:not([hidden]), h2.text-red-700, h2.text-green-700',
+    { timeout: 10000 },
+  );
+  const isBlockedAtStep2 = await page.$('h2.text-red-700') !== null;
+  if (isBlockedAtStep2) {
+    await browser.close();
+    printResult(null, 'blocked at step 2', 'cv');
+    return;
+  }
   const shot3 = await page.screenshot({ fullPage: true });
   console.log(`\nStep 3 task: ${tasks.step3}`);
 
