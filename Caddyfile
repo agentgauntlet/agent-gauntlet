@@ -47,7 +47,11 @@
         reverse_proxy localhost:3002
     }
 
-    # Product search
+    # Product search — UI at /search/, API at /api/search/*
+    handle /search* {
+        uri strip_prefix /search
+        reverse_proxy localhost:3003
+    }
     handle /api/search/* {
         reverse_proxy localhost:3003
     }

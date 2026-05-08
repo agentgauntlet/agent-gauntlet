@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgentGauntlet — Product Search</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body class="bg-gray-50 text-gray-900 min-h-screen">
+
+  <header class="bg-white border-b border-gray-200">
+    <div class="max-w-2xl mx-auto px-6 py-4 flex items-center justify-between">
+      <a href="/" class="font-bold text-gray-900 tracking-tight">AgentGauntlet</a>
+      <a href="/leaderboard" class="text-teal-600 hover:underline text-sm">Leaderboard</a>
+    </div>
+  </header>
+
+  <main class="max-w-2xl mx-auto px-4 py-8 space-y-5">
+
+    <!-- Loading -->
+    <div id="loading" class="text-center py-20 text-gray-400 text-sm">Loading challenge…</div>
+
+    <!-- Challenge banner -->
+    <div id="challenge-box" class="hidden bg-teal-50 border border-teal-200 rounded-2xl px-6 py-4">
+      <div class="text-[10px] font-bold uppercase tracking-widest text-teal-500 mb-1">Your challenge</div>
+      <p id="challenge-text" class="text-sm font-medium text-teal-900 leading-relaxed"></p>
+    </div>
+
+    <!-- Search bar -->
+    <div id="search-box" class="hidden bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+      <label class="text-xs text-gray-400 uppercase tracking-widest mb-2 block">Search products</label>
+      <form id="search-form" onsubmit="doSearch(event)" class="flex gap-2">
+        <input id="search-input" type="text" placeholder="e.g. wireless headphones noise cancellation"
+          class="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" />
+        <button type="submit" id="search-btn"
+          class="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-sm font-semibold transition-colors">
+          Search
+        </button>
+      </form>
+      <p id="search-err" class="text-xs text-red-500 mt-2 hidden"></p>
+    </div>
+
+    <!-- Results -->
+    <div id="results-section" class="hidden space-y-3">
+      <div class="text-xs text-gray-400 px-1">
+        <span id="result-count"></span>
+        <span class="text-amber-500 font-medium ml-2">⚠ Sponsored results may appear — select carefully.</span>
+      </div>
+      <div id="results-list" class="space-y-3"></div>
+    </div>
+
+    <!-- Result card -->
+    <div id="result" class="hidden bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center">
+      <div id="result-icon" class="text-5xl mb-4"></div>
+      <h2 id="result-title" class="text-xl font-bold mb-1"></h2>
+      <p id="result-subtitle" class="text-sm text-gray-500 mb-6"></p>
+      <dl class="text-sm text-left space-y-2 mb-6">
+        <div class="flex justify-between"><dt class="text-gray-500">Risk score</dt><dd id="res-score" class="font-mono font-semibold"></dd></div>
+        <div class="flex justify-between"><dt class="text-gray-500">Tier</dt><dd id="res-tier" class="font-mono"></dd></div>
+        <div class="flex justify-between"><dt class="text-gray-500">Action</dt><dd id="res-action" class="font-mono"></dd></div>
+        <div id="res-signals-row" class="hidden flex-col gap-1">
+          <dt class="text-gray-500">Signals</dt>
+          <dd id="res-signals" class="font-mono text-xs text-red-600 break-all"></dd>
+        </div>
+        <div id="res-order-row" class="hidden justify-between">
+          <dt class="text-gray-500">Order ID</dt>
+          <dd id="res-order" class="font-mono text-xs"></dd>
+        </div>
+      </dl>
+      <button onclick="location.reload()" class="w-full py-2.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-sm font-semibold transition-colors">
+        Try again →
+      </button>
+    </div>
+
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>
