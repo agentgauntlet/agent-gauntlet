@@ -179,13 +179,13 @@ async function runCv() {
     return;
   }
 
-  // --- Step 1: identify item visually --------------------------------------
-  // Wait for cart items to render. If the page shows an error instead (e.g.
-  // session not found after a server restart), this will surface that message.
+  // --- Step 1: identify item visually, then click it on the page ----------
+  // The page advances its own UI when items are clicked; it also submits
+  // each step to the server. The agent only reads visually and clicks.
   await page.waitForSelector('#cart-items li', { timeout: 15000 }).catch(async () => {
     const statusText = await page.$eval('#status', el => el.textContent).catch(() => '(unknown)');
     await browser.close();
-    throw new Error(`Cart never rendered. Page status: "${statusText}" — the session may have been lost due to a server restart. Re-run the agent.`);
+    throw new Error(`Cart never rendered. Page status: "${statusText}" — session lost to server restart, re-run.`);
   });
   const shot1 = await page.screenshot({ fullPage: true });
   console.log(`\nStep 1 task: ${tasks.step1}`);
@@ -195,55 +195,51 @@ async function runCv() {
   );
   console.log(`Claude identified: "${itemAnswer}"`);
 
-  const step1Result = await apiPost('/api/v2/step', {
-    sessionId, token, step: 1,
-    answer: { cvItemName: itemAnswer },
-    telemetry: telemetry(),
-  }, token);
-  if (step1Result.action === 'block') {
-    await browser.close();
-    printResult(step1Result.risk, 'blocked at step 1', 'cv');
-    return;
-  }
-  console.log(`Step 2 task: ${step1Result.task}`);
+  // Click the item on the page — page submits step 1 to the server
+  const itemLoc = page.locator('[data-item-id]').filter({ hasText: itemAnswer }).first();
+  await itemLoc.click();
 
-  // --- Step 2: identify shipping visually ----------------------------------
+  // --- Step 2: wait for shipping options, identify visually, click ---------
+  await page.waitForSelector('section[data-step="2"]:not([hidden])', { timeout: 10000 });
   const shot2 = await page.screenshot({ fullPage: true });
+  console.log(`\nStep 2 task: ${tasks.step2}`);
 
   const shippingAnswer = await askClaude(shot2,
-    `${step1Result.task}\nLook at the shipping options shown on the page. Reply with ONLY the exact name of the matching shipping option (e.g. "Standard", "Express", "Overnight").`
+    `${tasks.step2}\nLook at the shipping options shown on the page. Reply with ONLY the exact name of the matching shipping option (e.g. "Standard", "Express", "Overnight").`
   );
   console.log(`Claude identified: "${shippingAnswer}"`);
 
-  const step2Result = await apiPost('/api/v2/step', {
-    sessionId, token, step: 2,
-    answer: { cvShippingName: shippingAnswer },
-    telemetry: telemetry(),
-  }, token);
-  if (step2Result.action === 'block') {
-    await browser.close();
-    printResult(step2Result.risk, 'blocked at step 2', 'cv');
-    return;
-  }
-  console.log(`Step 3 task: ${step2Result.task}`);
+  // Click the shipping option on the page — page submits step 2 to the server
+  const shippingLoc = page.locator('#shipping-options').getByText(shippingAnswer, { exact: false }).first();
+  await shippingLoc.click();
 
-  // --- Step 3: identify non-recommended button visually --------------------
+  // --- Step 3: wait for checkout buttons, identify non-recommended, click --
+  await page.waitForSelector('section[data-step="3"]:not([hidden])', { timeout: 10000 });
   const shot3 = await page.screenshot({ fullPage: true });
+  console.log(`\nStep 3 task: ${tasks.step3}`);
 
   const btnAnswer = await askClaude(shot3,
-    `${step2Result.task}\nLook at the checkout buttons on the page. Is there a button NOT marked as "Recommended"? Reply with ONLY "yes" or "no".`
+    `${tasks.step3}\nLook at the checkout buttons on the page. One button is marked "Recommended" and one is not. Reply with ONLY the exact label text of the button that is NOT marked "Recommended".`
   );
-  const clickedNonRecommended = btnAnswer.toLowerCase().startsWith('yes');
-  console.log(`Claude identified non-recommended button: ${clickedNonRecommended}`);
+  console.log(`Claude identified non-recommended button: "${btnAnswer}"`);
 
-  const checkoutResult = await apiPost('/api/v2/checkout', {
-    sessionId, token,
-    cvClickedNonRecommended: clickedNonRecommended,
-    telemetry: telemetry(),
-  }, token);
+  // Click the non-recommended button on the page
+  const btnLoc = page.locator('#step3-buttons button').filter({ hasText: btnAnswer }).first();
+  await btnLoc.click();
+
+  // Wait for the outcome to be recorded and read the final risk badge
+  await page.waitForSelector('#risk-badge:not(.hidden)', { timeout: 10000 }).catch(() => {});
+  const checkoutResult = await page.evaluate(() => {
+    const score = document.getElementById('risk-score')?.textContent;
+    const status = document.getElementById('status')?.textContent;
+    return { score: score ? parseInt(score) : null, status };
+  });
+  const riskResult = { score: checkoutResult.score, tier: null, action: null };
+  console.log(`Page status: "${checkoutResult.status}"`);
+  const outcome = checkoutResult.status?.toLowerCase().includes('block') ? 'blocked' : 'completed';
 
   await browser.close();
-  printResult(checkoutResult.risk, checkoutResult.outcome || 'completed', 'cv');
+  printResult(riskResult, outcome, 'cv');
 }
 
 // ===========================================================================
