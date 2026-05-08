@@ -224,7 +224,7 @@ async function run() {
     const notOurBid        = status.currentBidder !== 'you';
     const pastFirstBidGate = (now - sessionStart) > 3500;        // avoid bid_no_deliberation
     const pastCompetGate   = !lastCompetAt || (lastStatusAt - lastCompetAt) > 900;  // avoid overbid_immediately
-    const notLastSeconds   = status.timeRemaining > 6000;        // stop bidding in last 6s
+    const notLastSeconds   = status.timeRemaining > 2500;        // must have enough time to wait 900ms + 700ms and still bid
 
     if (notOurBid && pastFirstBidGate && pastCompetGate && notLastSeconds) {
       // Wait 700ms+ after the status poll before bidding (avoid bid_sub_second)
