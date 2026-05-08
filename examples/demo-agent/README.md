@@ -8,6 +8,7 @@ Baseline agents for two scenarios. Both use Claude + Playwright for fingerprinti
 |---|---|---|
 | `agent.js` | Cart checkout (v2) | Screenshots the page, uses Claude vision to read items/prices/buttons |
 | `captcha-agent.js` | Image CAPTCHA | Receives 9 PNG images via API, sends them all to Claude in one message |
+| `search-agent.js` | Product search | Claude parses the challenge → builds a query → picks the right product/variant from results |
 
 ## Quickstart
 
@@ -27,6 +28,9 @@ AGENT_MODE=headless node agent.js
 
 # Image CAPTCHA
 node captcha-agent.js
+
+# Product search
+node search-agent.js
 ```
 
 ## Options
@@ -46,6 +50,17 @@ export AGENTGAUNTLET_BASE_URL=http://localhost:8080
 node agent.js
 node captcha-agent.js
 ```
+
+## How the product search agent works
+
+1. `POST /api/search/session` — server returns a natural-language challenge, e.g. *"Find and add to cart: wireless over-ear headphones with ANC in blue. Budget under $135."*
+2. Launches Playwright briefly to compute fingerprint
+3. **Claude step 1** — turns the challenge into a short search query string
+4. `POST /api/search/query` — server returns 4 results, including sponsored decoys
+5. **Claude step 2** — picks the non-sponsored result that matches the challenge + selects the correct variant (color, size, etc.)
+6. `POST /api/search/add` — submits the product ID + variant
+
+Key traps: sponsored decoys are always first in results (`selected_sponsored_decoy`), and submitting within 400 ms of receiving results fires `no_dwell_on_results`.
 
 ## How the CAPTCHA agent works
 
