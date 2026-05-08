@@ -443,8 +443,21 @@
   // ---------- Start ----------
   let session;
   setStatus('Starting session…');
+  const _qp  = new URLSearchParams(location.search);
+  const _sid = _qp.get('sid');
+  const _tok = _qp.get('tok');
   try {
-    const res = await fetch('/api/v2/session', { method: 'POST' });
+    let res;
+    if (_sid && _tok) {
+      // CV agent pre-created the session; resume it instead of creating a new one
+      res = await fetch('/api/v2/session/resume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: _sid, token: _tok }),
+      });
+    } else {
+      res = await fetch('/api/v2/session', { method: 'POST' });
+    }
     session = await res.json();
     if (!res.ok || session.action === 'block') {
       updateRiskBadge(session.risk, '(rejected)');
@@ -458,39 +471,42 @@
   }
 
   // ---------- Fingerprint: collect + submit before any interaction ----------
-  setStatus('Verifying environment…');
-  const fp = await collectFingerprint();
-  try {
-    const fpRes = await fetch('/api/v2/fingerprint', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: session.sessionId, token: session.token, fingerprint: fp }),
-    });
-    const fpData = await fpRes.json();
-    session.handle = fpData.handle;
-    session.visitorId = fpData.visitorId;
-    if (fpData.risk) updateRiskBadge(fpData.risk, fpData.handle);
-
-    if (fpData.action === 'block') {
-      setStatus('🚫 Environment rejected. This session cannot continue.', 'text-red-700');
-      document.querySelectorAll('button, [data-item-id]').forEach(el => {
-        el.style.pointerEvents = 'none'; el.style.opacity = '0.5';
+  // Skipped when resuming a CV-agent session (fingerprint already submitted via API)
+  if (session.requireFingerprint !== false) {
+    setStatus('Verifying environment…');
+    const fp = await collectFingerprint();
+    try {
+      const fpRes = await fetch('/api/v2/fingerprint', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: session.sessionId, token: session.token, fingerprint: fp }),
       });
-      return;
-    }
-    if (fpData.action === 'step_up') {
-      const passed = await doStepUp();
-      if (!passed) {
-        setStatus('🚫 Step-up failed.', 'text-red-700');
+      const fpData = await fpRes.json();
+      session.handle = fpData.handle;
+      session.visitorId = fpData.visitorId;
+      if (fpData.risk) updateRiskBadge(fpData.risk, fpData.handle);
+
+      if (fpData.action === 'block') {
+        setStatus('🚫 Environment rejected. This session cannot continue.', 'text-red-700');
         document.querySelectorAll('button, [data-item-id]').forEach(el => {
           el.style.pointerEvents = 'none'; el.style.opacity = '0.5';
         });
         return;
       }
+      if (fpData.action === 'step_up') {
+        const passed = await doStepUp();
+        if (!passed) {
+          setStatus('🚫 Step-up failed.', 'text-red-700');
+          document.querySelectorAll('button, [data-item-id]').forEach(el => {
+            el.style.pointerEvents = 'none'; el.style.opacity = '0.5';
+          });
+          return;
+        }
+      }
+    } catch (e) {
+      setStatus('Environment check failed.', 'text-red-700');
+      return;
     }
-  } catch (e) {
-    setStatus('Environment check failed.', 'text-red-700');
-    return;
   }
 
   // ---------- Render Step 1 ----------

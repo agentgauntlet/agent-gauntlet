@@ -183,7 +183,7 @@ app.post('/api/v2/session', attachApiKey, (req, res) => {
     return res.json({
       sessionId: s.id, token: s.token,
       mode: 'cv',
-      scenarioUrl: `${APP_BASE_URL}/v2`,
+      scenarioUrl: `${APP_BASE_URL}/v2?sid=${encodeURIComponent(s.id)}&tok=${encodeURIComponent(s.token)}`,
       tasks: {
         step1: `Select the cart item whose unit price is between $${s.step1.low} and $${s.step1.high}. Read the price from the page visually.`,
         step2: `Choose the shipping option whose cost percentage of the order subtotal falls between ${s.step2.lowPct}% and ${s.step2.highPct}%. Read the options from the page visually.`,
@@ -208,6 +208,24 @@ app.post('/api/v2/session', attachApiKey, (req, res) => {
 });
 
 // /api/v2/fingerprint — handled by createScenario
+
+// CV mode: browser navigates to /v2?sid=...&tok=... and resumes an existing session
+app.post('/api/v2/session/resume', (req, res) => {
+  const { sessionId, token } = req.body || {};
+  const s = sessions.get(sessionId);
+  if (!s || s.token !== token) return res.status(403).json({ ok: false, reason: 'invalid_session' });
+  res.json({
+    sessionId: s.id, token: s.token,
+    mode: s.mode,
+    cart: s.cart, subtotal: s.subtotal,
+    step1: {
+      prompt: `Click the item whose unit price is between $${s.step1.low} and $${s.step1.high}.`,
+      low: s.step1.low, high: s.step1.high,
+    },
+    requireFingerprint: false,
+    risk: publicRisk(computeRisk(s.signals || []), s.keyTier, s),
+  });
+});
 
 app.post('/api/v2/step', async (req, res) => {
   const { sessionId, token, step, answer = {}, telemetry } = req.body || {};
