@@ -22,7 +22,8 @@ const DIMENSIONS = {
                      'chrome_ua_missing_client_hints', 'chrome_object_missing', 'default_headless_viewport',
                      'no_canvas_hash', 'no_audio_hash', 'software_webgl_renderer', 'webgl_missing',
                      'zero_plugins_desktop_chrome', 'zero_screen', 'raf_unthrottled', 'non_browser_http_client',
-                     'no_user_agent', 'no_accept_language', 'no_accept_encoding', 'no_fingerprint_object'],
+                     'no_user_agent', 'no_accept_language', 'no_accept_encoding', 'no_fingerprint_object',
+                     'known_bot_ja3'],
 };
 
 // Collapse a signal array into { name: count } and dimension totals. Used to
