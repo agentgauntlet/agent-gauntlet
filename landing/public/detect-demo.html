@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>detect.js self-test — AgentGauntlet</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen font-sans">
+
+  <header class="border-b border-gray-800">
+    <div class="max-w-3xl mx-auto px-6 py-5 flex items-center gap-3">
+      <a href="/" class="flex items-center gap-3">
+        <img src="/assets/logo.png" alt="AgentGauntlet" class="h-9 w-auto" />
+        <span class="text-xl font-bold tracking-tight">AgentGauntlet</span>
+      </a>
+      <span class="text-gray-600">/</span>
+      <span class="text-gray-400 text-sm">detect.js self-test</span>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-6 py-12 space-y-8">
+    <div>
+      <h1 class="text-3xl font-bold mb-2">detect.js self-test</h1>
+      <p class="text-gray-400">
+        Paste your API key, click <em>Run scoring</em>, see what the SDK saw about this session.
+        Run it again from a Playwright/Puppeteer headless agent and watch the score climb.
+      </p>
+    </div>
+
+    <!-- Key input -->
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-3">
+      <label for="api-key" class="block text-sm font-medium text-gray-300">API key</label>
+      <input id="api-key" type="text" placeholder="agg_..."
+        class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-sm font-mono text-cyan-300 focus:outline-none focus:border-cyan-500" />
+      <p class="text-xs text-gray-500">
+        Don't have one? <a href="/keys.html" class="text-cyan-400 hover:underline">Get a free key</a>. Saved in localStorage so you don't have to paste again.
+      </p>
+    </div>
+
+    <!-- Run button + status -->
+    <div class="flex items-center gap-3">
+      <button id="run-btn"
+        class="px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+        Run scoring
+      </button>
+      <span id="status" class="text-sm text-gray-400"></span>
+    </div>
+
+    <!-- Result -->
+    <div id="result" class="hidden bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4">
+      <div class="flex items-baseline justify-between">
+        <div>
+          <p class="text-xs uppercase tracking-widest text-gray-500">Risk score</p>
+          <p id="score" class="text-4xl font-bold font-mono"></p>
+        </div>
+        <div class="text-right">
+          <p class="text-xs uppercase tracking-widest text-gray-500">Action</p>
+          <p id="action" class="text-2xl font-bold"></p>
+          <p id="tier" class="text-xs text-gray-500 mt-1"></p>
+        </div>
+      </div>
+
+      <div>
+        <p class="text-xs uppercase tracking-widest text-gray-500 mb-2">Signals fired</p>
+        <div id="signals" class="flex flex-wrap gap-1.5"></div>
+        <p id="no-signals" class="hidden text-sm text-gray-500 italic">No signals — looks human.</p>
+      </div>
+
+      <details class="text-xs text-gray-400">
+        <summary class="cursor-pointer hover:text-gray-200">Raw response</summary>
+        <pre id="raw" class="mt-2 bg-gray-950 border border-gray-800 rounded p-3 overflow-x-auto"></pre>
+      </details>
+    </div>
+
+    <!-- Embed instructions -->
+    <div class="bg-gray-900 border border-gray-800 rounded-xl p-5 text-sm space-y-3">
+      <p class="font-medium text-gray-200">Embed on your own page</p>
+      <pre class="bg-gray-950 border border-gray-800 rounded p-3 overflow-x-auto text-xs"><code>&lt;script src="https://agentgauntlet.ai/detect.js"
+        data-key="<span id="embed-key">agg_...</span>"
+        data-forms="#login, #checkout"
+        async&gt;&lt;/script&gt;</code></pre>
+      <p class="text-xs text-gray-500">
+        Full integration guide in the
+        <a href="https://github.com/agentgauntlet/agent-gauntlet-services" class="text-cyan-400 hover:underline">private repo README</a>.
+      </p>
+    </div>
+  </main>
+
+  <script>
+    // ----- Persist key in localStorage -----
+    const keyInput = document.getElementById('api-key');
+    const stored = localStorage.getItem('ag_demo_key');
+    if (stored) {
+      keyInput.value = stored;
+      document.getElementById('embed-key').textContent = stored;
+    }
+    keyInput.addEventListener('input', () => {
+      localStorage.setItem('ag_demo_key', keyInput.value.trim());
+      document.getElementById('embed-key').textContent = keyInput.value.trim() || 'agg_...';
+    });
+
+    // ----- Dynamic-load detect.js with the provided key -----
+    // Done dynamically so the same page can swap keys without reload.
+    let sdkLoaded = false;
+    function loadSdk(key) {
+      return new Promise((resolve, reject) => {
+        if (sdkLoaded) return resolve();
+        const s = document.createElement('script');
+        s.src = '/detect.js';
+        s.async = true;
+        s.dataset.key = key;
+        s.dataset.autoInit = 'true';
+        // detect.js auto-inits and starts telemetry immediately. We give it
+        // a brief moment to settle before scoring so behavioral signals
+        // (mouse movements while the user reads + clicks "Run") accumulate.
+        s.onload  = () => { sdkLoaded = true; setTimeout(resolve, 200); };
+        s.onerror = () => reject(new Error('failed to load /detect.js'));
+        document.head.appendChild(s);
+      });
+    }
+
+    // ----- Run a scoring round -----
+    const runBtn   = document.getElementById('run-btn');
+    const statusEl = document.getElementById('status');
+    runBtn.addEventListener('click', async () => {
+      const key = keyInput.value.trim();
+      if (!key) {
+        statusEl.textContent = 'Enter an API key first.';
+        statusEl.className = 'text-sm text-amber-400';
+        return;
+      }
+
+      runBtn.disabled = true;
+      statusEl.textContent = 'Loading SDK…';
+      statusEl.className = 'text-sm text-gray-400';
+
+      try {
+        await loadSdk(key);
+        statusEl.textContent = 'Scoring…';
+        const result = await window.AgentGauntlet.score();
+        renderResult(result);
+        statusEl.textContent = 'Done.';
+      } catch (e) {
+        statusEl.textContent = 'Error: ' + e.message;
+        statusEl.className = 'text-sm text-red-400';
+      } finally {
+        runBtn.disabled = false;
+      }
+    });
+
+    function renderResult(r) {
+      document.getElementById('result').classList.remove('hidden');
+      document.getElementById('score').textContent  = r.score ?? '—';
+      document.getElementById('tier').textContent   = r.tier  ?? '';
+      const actionEl = document.getElementById('action');
+      actionEl.textContent = (r.action || '—').toUpperCase();
+      actionEl.className =
+        'text-2xl font-bold ' +
+        ({ allow:   'text-green-400',
+           step_up: 'text-amber-400',
+           block:   'text-red-400'
+         }[r.action] || 'text-gray-300');
+
+      // Free tier returns r.signals (array of names); pro returns r.breakdown
+      const sigsEl   = document.getElementById('signals');
+      const noSigEl  = document.getElementById('no-signals');
+      sigsEl.innerHTML = '';
+      const items = r.breakdown
+        ? r.breakdown.map(b => ({ name: b.signal, weight: b.weight }))
+        : (r.signals || []).map(s => ({ name: s, weight: null }));
+      if (items.length === 0) {
+        noSigEl.classList.remove('hidden');
+      } else {
+        noSigEl.classList.add('hidden');
+        for (const it of items) {
+          const chip = document.createElement('span');
+          chip.className =
+            'text-[11px] font-mono px-2 py-0.5 rounded border border-red-900 bg-red-950/40 text-red-300';
+          chip.textContent = it.weight != null
+            ? `${it.name} +${it.weight}`
+            : it.name;
+          sigsEl.appendChild(chip);
+        }
+      }
+
+      document.getElementById('raw').textContent = JSON.stringify(r, null, 2);
+    }
+  </script>
+</body>
+</html>
