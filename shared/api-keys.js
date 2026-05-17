@@ -60,6 +60,30 @@ async function checkAndIncrementUsage(key, tier) {
   return { allowed: true, runsToday: updated[0]?.runs ?? 1, dailyLimit: FREE_DAILY_LIMIT };
 }
 
+// Look up the OAuth identity attached to an agg_* key. Used by the
+// enterprise key management endpoints to authorise add-domain / revoke /
+// list operations: only the human who provisioned an ent_pub_* key (via
+// their own agg_* OAuth-linked key) can manage it. Returns null if the
+// key is unknown, inactive, or has no OAuth identity (manual signup).
+async function getOauthIdentityForKey(rawKey) {
+  if (!rawKey || typeof rawKey !== 'string') return null;
+  const key = rawKey.trim();
+  if (!key.startsWith('agg_')) return null;
+  const { rows } = await pool.query(`
+    SELECT oauth_provider, oauth_id, email, active
+    FROM   ${G}.api_keys
+    WHERE  key = $1
+  `, [key]);
+  const row = rows[0];
+  if (!row || !row.active) return null;
+  if (!row.oauth_provider || !row.oauth_id) return null;
+  return {
+    oauthProvider: row.oauth_provider,
+    oauthId:       String(row.oauth_id),
+    email:         row.email,
+  };
+}
+
 async function getKeyInfo(rawKey) {
   if (!rawKey) return null;
   const date = todayUtc();
@@ -100,4 +124,4 @@ async function findOrCreateOAuthKey(provider, oauthId, name, email) {
   return { key, tier: 'free', isNew: true };
 }
 
-module.exports = { createKey, validateKey, checkAndIncrementUsage, getKeyInfo, findOrCreateOAuthKey, FREE_DAILY_LIMIT };
+module.exports = { createKey, validateKey, checkAndIncrementUsage, getKeyInfo, findOrCreateOAuthKey, getOauthIdentityForKey, FREE_DAILY_LIMIT };

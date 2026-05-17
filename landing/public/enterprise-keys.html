@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Enterprise keys — AgentGauntlet</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen font-sans">
+
+  <header class="border-b border-gray-800">
+    <div class="max-w-3xl mx-auto px-6 py-5 flex items-center gap-3">
+      <a href="/" class="flex items-center gap-3">
+        <img src="/assets/logo.png" alt="AgentGauntlet" class="h-9 w-auto" />
+        <span class="text-xl font-bold tracking-tight">AgentGauntlet</span>
+      </a>
+      <span class="text-gray-600">/</span>
+      <span class="text-gray-400 text-sm">Enterprise keys</span>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-6 py-12 space-y-8">
+    <div>
+      <h1 class="text-3xl font-bold mb-2">Enterprise keys</h1>
+      <p class="text-gray-400">
+        Pub/secret pairs for embedding <code class="text-cyan-300 text-sm">detect.js</code>
+        on your own site. The pub key goes in
+        <code class="text-cyan-300 text-sm">&lt;script data-key="..."&gt;</code>;
+        the secret lives only on your backend and authenticates server-to-server
+        score lookups. Each pair locks to one or more domains.
+      </p>
+    </div>
+
+    <!-- Auth prompt -->
+    <div id="auth-section" class="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-3">
+      <label for="api-key" class="block text-sm font-medium text-gray-300">Your account API key</label>
+      <input id="api-key" type="text" placeholder="agg_..."
+        class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-sm font-mono text-cyan-300 focus:outline-none focus:border-cyan-500" />
+      <p class="text-xs text-gray-500">
+        Sign in with GitHub / LinkedIn at <a href="/keys.html" class="text-cyan-400 hover:underline">/keys.html</a> if you don't have one.
+        Saved in localStorage so you only paste once.
+      </p>
+      <p id="auth-error" class="text-xs text-red-400 hidden"></p>
+    </div>
+
+    <!-- Existing keys list -->
+    <div id="keys-list" class="space-y-4 hidden">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold">Your enterprise keys</h2>
+        <button id="new-key-btn"
+          class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-sm font-semibold transition-colors">
+          + New key
+        </button>
+      </div>
+      <div id="keys-container" class="space-y-3"></div>
+      <p id="empty-msg" class="text-sm text-gray-500 italic hidden">
+        No enterprise keys yet. Click <em>New key</em> to provision one.
+      </p>
+    </div>
+
+    <!-- New-key modal (created on demand) -->
+    <div id="new-key-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div class="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-md space-y-4">
+        <h3 class="text-lg font-semibold">Create a new key pair</h3>
+        <input id="new-key-name" type="text" placeholder='e.g. "acme prod"'
+          class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-sm focus:outline-none focus:border-cyan-500" />
+        <div class="flex justify-end gap-2">
+          <button id="new-key-cancel"
+            class="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-gray-200">Cancel</button>
+          <button id="new-key-create"
+            class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-sm font-semibold">Create</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Secret-reveal modal (created after key creation; one-shot) -->
+    <div id="reveal-modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div class="bg-gray-900 border border-amber-500 rounded-xl p-6 w-full max-w-lg space-y-4">
+        <h3 class="text-lg font-bold text-amber-400">⚠ Secret shown once</h3>
+        <p class="text-sm text-gray-300">
+          Copy the secret below now — it won't be retrievable again. Set it as
+          an env var on your backend (e.g. <code class="text-cyan-300">DETECT_SECRET=...</code>).
+        </p>
+        <div>
+          <p class="text-xs uppercase text-gray-500 tracking-widest mb-1">Pub key (safe to share)</p>
+          <code id="reveal-pub" class="block bg-gray-950 border border-gray-800 rounded px-3 py-2 text-cyan-300 font-mono text-xs break-all"></code>
+        </div>
+        <div>
+          <p class="text-xs uppercase text-gray-500 tracking-widest mb-1">Secret (back-end only)</p>
+          <code id="reveal-secret" class="block bg-gray-950 border border-amber-700 rounded px-3 py-2 text-amber-300 font-mono text-xs break-all"></code>
+        </div>
+        <div class="flex justify-end gap-2">
+          <button id="reveal-copy"
+            class="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm">Copy secret</button>
+          <button id="reveal-done"
+            class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-sm font-semibold">I've saved it</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // ─── Auth handling ─────────────────────────────────────────────────────
+    const keyInput   = document.getElementById('api-key');
+    const errorEl    = document.getElementById('auth-error');
+    const authSec    = document.getElementById('auth-section');
+    const listSec    = document.getElementById('keys-list');
+    const container  = document.getElementById('keys-container');
+    const emptyMsg   = document.getElementById('empty-msg');
+
+    const stored = localStorage.getItem('ag_admin_key');
+    if (stored) {
+      keyInput.value = stored;
+      load();
+    }
+    keyInput.addEventListener('change', () => {
+      const v = keyInput.value.trim();
+      if (v) {
+        localStorage.setItem('ag_admin_key', v);
+        load();
+      }
+    });
+
+    function authHeaders() {
+      const k = (keyInput.value || localStorage.getItem('ag_admin_key') || '').trim();
+      return { 'X-Api-Key': k, 'Content-Type': 'application/json' };
+    }
+
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.classList.remove('hidden');
+    }
+    function clearError() {
+      errorEl.classList.add('hidden');
+    }
+
+    // ─── List + render keys ────────────────────────────────────────────────
+    async function load() {
+      clearError();
+      const res = await fetch('/api/enterprise/keys', { headers: authHeaders() });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        showError(data.hint || data.reason || 'Failed to load');
+        listSec.classList.add('hidden');
+        return;
+      }
+      authSec.classList.add('hidden');
+      listSec.classList.remove('hidden');
+      render(data.keys);
+    }
+
+    function render(keys) {
+      container.innerHTML = '';
+      if (keys.length === 0) {
+        emptyMsg.classList.remove('hidden');
+        return;
+      }
+      emptyMsg.classList.add('hidden');
+      for (const k of keys) container.appendChild(renderCard(k));
+    }
+
+    function renderCard(k) {
+      const card = document.createElement('div');
+      card.className = 'bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-3';
+      const lastUsed = k.lastUsed
+        ? new Date(k.lastUsed).toLocaleString()
+        : 'never';
+      const inactiveBadge = k.active
+        ? ''
+        : '<span class="text-[10px] uppercase tracking-widest bg-red-900/40 text-red-300 px-2 py-0.5 rounded">revoked</span>';
+      card.innerHTML = `
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <p class="font-semibold">${escapeHtml(k.name)} ${inactiveBadge}</p>
+            <code class="text-xs text-cyan-300 font-mono break-all">${escapeHtml(k.pubKey)}</code>
+            <p class="text-xs text-gray-500 mt-1">created ${new Date(k.createdAt).toLocaleDateString()} · last used ${lastUsed}</p>
+          </div>
+          ${k.active ? `<button class="revoke-btn text-xs text-red-400 hover:text-red-300" data-pub="${escapeAttr(k.pubKey)}">Revoke</button>` : ''}
+        </div>
+        <div>
+          <p class="text-xs uppercase tracking-widest text-gray-500 mb-2">Registered domains</p>
+          <div class="domain-list flex flex-wrap gap-1.5 mb-2">${
+            (k.domains || []).map(d =>
+              `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gray-800 border border-gray-700 text-xs font-mono">
+                 ${escapeHtml(d)}
+                 ${k.active ? `<button class="domain-del text-gray-500 hover:text-red-400" data-pub="${escapeAttr(k.pubKey)}" data-domain="${escapeAttr(d)}">×</button>` : ''}
+               </span>`).join('') ||
+            '<span class="text-xs text-gray-500 italic">none — detect.js will be rejected from any origin</span>'
+          }</div>
+          ${k.active ? `
+          <form class="domain-add flex gap-2" data-pub="${escapeAttr(k.pubKey)}">
+            <input type="text" placeholder="acme.com" class="flex-1 px-3 py-1.5 rounded bg-gray-800 border border-gray-700 text-xs font-mono focus:outline-none focus:border-cyan-500" />
+            <button type="submit" class="px-3 py-1.5 rounded bg-gray-800 hover:bg-gray-700 border border-gray-700 text-xs">Add</button>
+          </form>` : ''}
+        </div>
+      `;
+
+      // Wire add-domain
+      const addForm = card.querySelector('.domain-add');
+      if (addForm) {
+        addForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const input = addForm.querySelector('input');
+          const domain = input.value.trim();
+          if (!domain) return;
+          const res = await fetch(`/api/enterprise/key/${encodeURIComponent(k.pubKey)}/domains`, {
+            method: 'POST', headers: authHeaders(), body: JSON.stringify({ domain }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.ok) {
+            alert(data.hint || data.reason || 'Failed');
+            return;
+          }
+          input.value = '';
+          load();
+        });
+      }
+      // Wire delete-domain
+      card.querySelectorAll('.domain-del').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const pub    = btn.dataset.pub;
+          const domain = btn.dataset.domain;
+          if (!confirm(`Remove ${domain} from this key?`)) return;
+          await fetch(`/api/enterprise/key/${encodeURIComponent(pub)}/domains/${encodeURIComponent(domain)}`, {
+            method: 'DELETE', headers: authHeaders(),
+          });
+          load();
+        });
+      });
+      // Wire revoke
+      const revokeBtn = card.querySelector('.revoke-btn');
+      if (revokeBtn) {
+        revokeBtn.addEventListener('click', async () => {
+          if (!confirm(`Revoke ${k.pubKey}? This cannot be undone — current detect.js installs will start failing immediately.`)) return;
+          await fetch(`/api/enterprise/key/${encodeURIComponent(k.pubKey)}/revoke`, {
+            method: 'POST', headers: authHeaders(),
+          });
+          load();
+        });
+      }
+      return card;
+    }
+
+    // ─── New-key modal ─────────────────────────────────────────────────────
+    const newKeyBtn    = document.getElementById('new-key-btn');
+    const newKeyModal  = document.getElementById('new-key-modal');
+    const newKeyName   = document.getElementById('new-key-name');
+    const newKeyCreate = document.getElementById('new-key-create');
+    const newKeyCancel = document.getElementById('new-key-cancel');
+
+    newKeyBtn.addEventListener('click', () => {
+      newKeyName.value = '';
+      newKeyModal.classList.remove('hidden');
+      newKeyName.focus();
+    });
+    newKeyCancel.addEventListener('click', () => newKeyModal.classList.add('hidden'));
+    newKeyCreate.addEventListener('click', async () => {
+      const name = newKeyName.value.trim();
+      if (!name) return;
+      newKeyCreate.disabled = true;
+      const res = await fetch('/api/enterprise/key', {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      newKeyCreate.disabled = false;
+      if (!res.ok || !data.ok) {
+        alert(data.hint || data.reason || 'Failed');
+        return;
+      }
+      newKeyModal.classList.add('hidden');
+      reveal(data.pubKey, data.secretKey);
+      load();
+    });
+
+    // ─── Reveal-secret modal ───────────────────────────────────────────────
+    const revealModal  = document.getElementById('reveal-modal');
+    const revealPub    = document.getElementById('reveal-pub');
+    const revealSecret = document.getElementById('reveal-secret');
+    const revealCopy   = document.getElementById('reveal-copy');
+    const revealDone   = document.getElementById('reveal-done');
+
+    function reveal(pub, secret) {
+      revealPub.textContent    = pub;
+      revealSecret.textContent = secret;
+      revealModal.classList.remove('hidden');
+    }
+    revealCopy.addEventListener('click', () => {
+      navigator.clipboard.writeText(revealSecret.textContent).then(() => {
+        revealCopy.textContent = 'Copied!';
+        setTimeout(() => revealCopy.textContent = 'Copy secret', 1500);
+      });
+    });
+    revealDone.addEventListener('click', () => revealModal.classList.add('hidden'));
+
+    // ─── Misc ──────────────────────────────────────────────────────────────
+    function escapeHtml(s)  { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+    function escapeAttr(s)  { return escapeHtml(s).replace(/'/g, '&#39;'); }
+  </script>
+</body>
+</html>

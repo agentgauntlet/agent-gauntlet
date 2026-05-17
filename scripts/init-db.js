@@ -35,6 +35,7 @@ const EXPECTED_TABLES = [
   'visitor_ja3', 'visitor_ua',
   'api_keys', 'daily_usage', 'monthly_usage',
   'anonymous_usage', 'burst_usage', 'registration_usage',
+  'enterprise_keys', 'enterprise_domains',
 ];
 
 async function tableState() {

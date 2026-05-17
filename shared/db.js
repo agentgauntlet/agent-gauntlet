@@ -107,6 +107,32 @@ async function initSchema() {
       last_used  BIGINT,
       active     INTEGER NOT NULL DEFAULT 1
     )`,
+    // Enterprise pub/secret key pair for detect.js customers — separate
+    // from the agg_* agent-builder keys. The pub key is embedded in
+    // <script data-key="..."> on customer sites; the secret never leaves
+    // the customer's backend. Each pair is linked to an OAuth identity
+    // (the human who provisioned it) so the management UI can list/edit.
+    `CREATE TABLE IF NOT EXISTS gauntlet.enterprise_keys (
+      pub_key              TEXT    PRIMARY KEY,
+      secret_hash          TEXT    NOT NULL,
+      name                 TEXT    NOT NULL,
+      owner_oauth_provider TEXT,
+      owner_oauth_id       TEXT,
+      owner_email          TEXT,
+      created_at           BIGINT  NOT NULL,
+      last_used            BIGINT,
+      active               INTEGER NOT NULL DEFAULT 1
+    )`,
+    // Domains registered per enterprise pub key. /api/detect/token rejects
+    // any Origin whose hostname isn't in this list (Phase 3b domain
+    // locking). Many-to-one with enterprise_keys; ON DELETE CASCADE so
+    // revoking a pub key cleans up its domains.
+    `CREATE TABLE IF NOT EXISTS gauntlet.enterprise_domains (
+      pub_key   TEXT   NOT NULL REFERENCES gauntlet.enterprise_keys(pub_key) ON DELETE CASCADE,
+      domain    TEXT   NOT NULL,
+      added_at  BIGINT NOT NULL,
+      PRIMARY KEY (pub_key, domain)
+    )`,
     `CREATE TABLE IF NOT EXISTS gauntlet.daily_usage (
       key   TEXT    NOT NULL REFERENCES gauntlet.api_keys(key),
       date  TEXT    NOT NULL,
@@ -149,6 +175,9 @@ async function initSchema() {
     'CREATE INDEX IF NOT EXISTS idx_visitor_ja3       ON gauntlet.visitor_ja3(visitor_id)',
     'CREATE INDEX IF NOT EXISTS idx_visitor_ua        ON gauntlet.visitor_ua(visitor_id)',
     'CREATE INDEX IF NOT EXISTS idx_daily_usage_key   ON gauntlet.daily_usage(key)',
+    'CREATE INDEX IF NOT EXISTS idx_ent_keys_owner    ON gauntlet.enterprise_keys(owner_oauth_provider, owner_oauth_id) WHERE owner_oauth_id IS NOT NULL',
+    'CREATE INDEX IF NOT EXISTS idx_ent_keys_active   ON gauntlet.enterprise_keys(pub_key) WHERE active = 1',
+    'CREATE INDEX IF NOT EXISTS idx_ent_domains_pub   ON gauntlet.enterprise_domains(pub_key)',
     'CREATE INDEX IF NOT EXISTS idx_anon_usage_date   ON gauntlet.anonymous_usage(date)',
     'CREATE INDEX IF NOT EXISTS idx_burst_usage_min   ON gauntlet.burst_usage(minute)',
     'CREATE INDEX IF NOT EXISTS idx_reg_usage_date    ON gauntlet.registration_usage(date)',
