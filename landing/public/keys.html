@@ -71,10 +71,15 @@
 
         <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 text-sm text-gray-400 mb-6">
           <p class="font-medium text-gray-300 mb-2">Usage</p>
-          <pre class="text-xs overflow-x-auto"><code>curl -X POST https://agentgauntlet.ai/api/login/session \
+          <pre class="text-xs overflow-x-auto"><code># Start a scenario
+curl -X POST https://agentgauntlet.ai/api/login/session \
   -H "Content-Type: application/json" \
   -H "X-Api-Key: <span id="key-inline"></span>" \
-  -d '{}'</code></pre>
+  -d '{}'
+
+# Retrieve a scored result (queryable for 7 days; no daily-quota cost)
+curl -H "X-Api-Key: <span id="key-inline-2"></span>" \
+  https://agentgauntlet.ai/api/session/&lt;sessionId&gt;/result</code></pre>
         </div>
 
         <a href="/leaderboard" class="block w-full text-center py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700 text-sm font-semibold transition-colors">
@@ -95,8 +100,9 @@
     if (key) {
       document.getElementById('login-panel').classList.add('hidden');
       document.getElementById('success-panel').classList.remove('hidden');
-      document.getElementById('key-display').textContent = key;
-      document.getElementById('key-inline').textContent  = key;
+      document.getElementById('key-display').textContent  = key;
+      document.getElementById('key-inline').textContent   = key;
+      document.getElementById('key-inline-2').textContent = key;
       if (!isNew) {
         document.getElementById('key-subtitle').textContent =
           'Welcome back — this is your existing key for this ' + (provider || 'account') + ' account.';

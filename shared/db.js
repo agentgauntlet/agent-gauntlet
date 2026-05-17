@@ -55,6 +55,29 @@ async function initSchema() {
       signal      TEXT    NOT NULL,
       fired_at    BIGINT  NOT NULL
     )`,
+    // Denormalised per-session rollup that survives the 7-day TTL on sessions /
+    // session_signals / telemetry_snapshots. This is the durable source of truth
+    // for the leaderboard. Every recordTerminalVisit() writes one row here in
+    // addition to the existing sessions / session_signals writes.
+    `CREATE TABLE IF NOT EXISTS gauntlet.leaderboard_entries (
+      session_id        TEXT     PRIMARY KEY,
+      visitor_id        TEXT     NOT NULL,
+      handle            TEXT     NOT NULL,
+      scenario          TEXT     NOT NULL,
+      outcome           TEXT     NOT NULL,
+      risk_score        INTEGER  NOT NULL,
+      risk_tier         TEXT     NOT NULL,
+      had_step_up       INTEGER  NOT NULL DEFAULT 0,
+      step_up_passed    INTEGER  NOT NULL DEFAULT 0,
+      agent_mode        TEXT     NOT NULL DEFAULT 'headless',
+      api_key           TEXT,
+      ja3_hash          TEXT,
+      user_agent        TEXT,
+      elapsed_ms        INTEGER,
+      signal_dimensions JSONB    NOT NULL DEFAULT '{}'::jsonb,
+      signal_counts     JSONB    NOT NULL DEFAULT '{}'::jsonb,
+      ended_at          BIGINT   NOT NULL
+    )`,
     `CREATE TABLE IF NOT EXISTS gauntlet.telemetry_snapshots (
       id          SERIAL  PRIMARY KEY,
       session_id  TEXT    NOT NULL,
@@ -118,6 +141,10 @@ async function initSchema() {
     'CREATE INDEX IF NOT EXISTS idx_sessions_scenario ON gauntlet.sessions(scenario)',
     'CREATE INDEX IF NOT EXISTS idx_sessions_ended    ON gauntlet.sessions(ended_at)',
     'CREATE INDEX IF NOT EXISTS idx_signals_session   ON gauntlet.session_signals(session_id)',
+    'CREATE INDEX IF NOT EXISTS idx_lb_entries_visitor  ON gauntlet.leaderboard_entries(visitor_id)',
+    'CREATE INDEX IF NOT EXISTS idx_lb_entries_scenario ON gauntlet.leaderboard_entries(scenario, ended_at)',
+    'CREATE INDEX IF NOT EXISTS idx_lb_entries_ended_at ON gauntlet.leaderboard_entries(ended_at)',
+    'CREATE INDEX IF NOT EXISTS idx_lb_entries_api_key  ON gauntlet.leaderboard_entries(api_key) WHERE api_key IS NOT NULL',
     'CREATE INDEX IF NOT EXISTS idx_telemetry_session ON gauntlet.telemetry_snapshots(session_id)',
     'CREATE INDEX IF NOT EXISTS idx_visitor_ja3       ON gauntlet.visitor_ja3(visitor_id)',
     'CREATE INDEX IF NOT EXISTS idx_visitor_ua        ON gauntlet.visitor_ua(visitor_id)',

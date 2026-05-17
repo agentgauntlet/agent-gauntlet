@@ -31,6 +31,7 @@ function targetSummary(url) {
 
 const EXPECTED_TABLES = [
   'visitors', 'sessions', 'session_signals', 'telemetry_snapshots',
+  'leaderboard_entries',
   'visitor_ja3', 'visitor_ua',
   'api_keys', 'daily_usage', 'monthly_usage',
   'anonymous_usage', 'burst_usage', 'registration_usage',

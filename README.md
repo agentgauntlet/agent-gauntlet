@@ -122,6 +122,29 @@ curl -X POST https://agentgauntlet.ai/api/v2/session \
 
 Each session is single-use. The response includes `sessionId`, `token`, scenario data, and after fingerprint submission, a `risk` object: `{score, tier, action, signals[]?, breakdown[]?}`. Pro keys get the full breakdown including per-signal weights from the hosted scorer.
 
+### Retrieving a past result
+
+After a session ends, the scored outcome is queryable for **7 days** via:
+
+```bash
+curl -H "X-Api-Key: <your-key>" \
+  https://agentgauntlet.ai/api/session/<sessionId>/result
+```
+
+Requires an API key. Result reads use a separate burst bucket (60/min Pro, 20/min Free) and **do not count toward your daily run quota** — query as often as your CI needs.
+
+Response shape by tier:
+
+| Tier | Returns |
+|---|---|
+| Anonymous | `401` — keyed access only |
+| Free | `score`, `tier`, `action`, `scenario`, `outcome`, `duration_ms`, `ended_at` |
+| Pro / Enterprise | + `breakdown[{signal, weight}]` + `thresholds` |
+
+After the 7-day window the endpoint returns `410 Gone`. Aggregated leaderboard stats (rank, dimension scores) survive indefinitely in `gauntlet.leaderboard_entries`; only the per-session detail expires.
+
+Operators: detail cleanup is a separate cron job — `node scripts/cleanup-expired.js` (idempotent, supports `--dry-run`). One-time backfill from older `sessions` rows: `node scripts/backfill-leaderboard-entries.js`.
+
 ---
 
 ## Contributing
