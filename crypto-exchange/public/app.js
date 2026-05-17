@@ -7,85 +7,12 @@ let withdrawal, totpSecret;
 let sessionStart, authorizeAt;
 let totpInterval;
 
-// Telemetry
-let mouseMoves = 0, clickCount = 0;
-const clickDwells = [], velocityMeans = [], firstLatencies = [];
-let lastMousePos = null, lastMouseTime = null;
-
-// ── Telemetry ──────────────────────────────────────────────────────────────
-
-document.addEventListener('mousemove', e => {
-  mouseMoves++;
-  const now = Date.now();
-  if (lastMousePos && lastMouseTime) {
-    const dx = e.clientX - lastMousePos.x, dy = e.clientY - lastMousePos.y;
-    const dt = now - lastMouseTime;
-    if (dt > 0) velocityMeans.push(Math.sqrt(dx*dx + dy*dy) / dt);
-  }
-  if (!lastMousePos) firstLatencies.push(now - (window._loadAt || now));
-  lastMousePos = { x: e.clientX, y: e.clientY };
-  lastMouseTime = now;
-});
-document.addEventListener('mousedown', () => { window._dwell = Date.now(); });
-document.addEventListener('mouseup',   () => {
-  if (window._dwell) { clickDwells.push(Date.now() - window._dwell); clickCount++; }
-});
-window._loadAt = Date.now();
-
-function buildTelemetry() {
-  const vMean = velocityMeans.length ? velocityMeans.reduce((a,b)=>a+b,0)/velocityMeans.length : 0;
-  const vStd  = velocityMeans.length > 1
-    ? Math.sqrt(velocityMeans.reduce((s,v)=>s+(v-vMean)**2,0)/velocityMeans.length)
-    : vMean * 0.3;
-  const dwell = clickDwells.length
-    ? clickDwells.slice().sort((a,b)=>a-b)[Math.floor(clickDwells.length/2)]
-    : 100;
-  return {
-    mouseMoves, clickCount,
-    clickDwellMedian:    Math.round(dwell),
-    mouseVelocityMean:   Math.round(vMean * 1000),
-    mouseVelocityStd:    Math.round(vStd  * 1000),
-    mouseEntropy:        +Math.min(3, mouseMoves / 200).toFixed(2),
-    firstEventLatencyMs: firstLatencies[0] ?? Math.floor(500 + Math.random() * 800),
-  };
-}
-
-// ── Fingerprint ────────────────────────────────────────────────────────────
-
-async function computeFingerprint() {
-  const canvas = document.createElement('canvas');
-  canvas.width = 240; canvas.height = 60;
-  const ctx = canvas.getContext('2d');
-  ctx.textBaseline = 'alphabetic';
-  ctx.fillStyle = '#f60'; ctx.fillRect(125, 1, 62, 20);
-  ctx.fillStyle = '#069'; ctx.font = '11pt Arial';
-  ctx.fillText('AgentGauntlet 🚀', 2, 15);
-  ctx.fillStyle = 'rgba(102,204,0,0.7)'; ctx.font = '18pt Arial';
-  ctx.fillText('AgentGauntlet 🚀', 4, 45);
-  const raw = canvas.toDataURL();
-  let h = 0;
-  for (let i = 0; i < raw.length; i++) { h = Math.imul(31, h) + raw.charCodeAt(i) | 0; }
-  const canvasHash = (h >>> 0).toString(16).padStart(8, '0');
-
-  let audioHash = null;
-  try {
-    const offline = new OfflineAudioContext(1, 4096, 44100);
-    const osc = offline.createOscillator(), comp = offline.createDynamicsCompressor();
-    osc.type = 'triangle'; osc.frequency.value = 10000;
-    osc.connect(comp); comp.connect(offline.destination); osc.start(0);
-    const buf = (await offline.startRendering()).getChannelData(0);
-    let ah = 0;
-    for (let i = 0; i < Math.min(buf.length, 500); i++) ah = Math.imul(31, ah) + Math.round(buf[i]*1e8) | 0;
-    audioHash = (ah >>> 0).toString(16).padStart(8, '0');
-  } catch(_) {}
-
-  return {
-    canvasHash, audioHash,
-    webdriver: navigator.webdriver,
-    userAgent: navigator.userAgent,
-    screen: { width: screen.width, height: screen.height },
-    tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
-  };
+// Telemetry + fingerprint live in window.AGDetect (loaded by index.html
+// from /shared/detect-core.js). buildTelemetry() preserves existing call
+// sites while delegating to the shared collector.
+const tel = window.AGDetect.startTelemetry();
+function buildTelemetry(extra = {}) {
+  return { ...tel.snapshot(), ...extra };
 }
 
 // ── TOTP (RFC 6238 via Web Crypto) ─────────────────────────────────────────
@@ -351,7 +278,7 @@ async function init() {
     });
 
     // Fingerprint
-    const fp = await computeFingerprint();
+    const fp = await window.AGDetect.collectFingerprint();
     await fetch('/api/crypto/fingerprint', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Session-Token': token },

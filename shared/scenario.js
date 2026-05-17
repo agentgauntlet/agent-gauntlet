@@ -33,6 +33,7 @@ const { PgVisitorStore }                           = require('./pg-visitor-store
 const { initSchema }                               = require('./db');
 const https = require('https');
 const { validateKey, checkAndIncrementUsage, createKey, getKeyInfo, findOrCreateOAuthKey, FREE_DAILY_LIMIT } = require('./api-keys');
+const { issueDetectToken, verifyDetectToken } = require('./detect-token');
 
 // ─── Pure helpers (also exported at module level) ────────────────────────────
 
@@ -114,6 +115,55 @@ function publicRisk(risk, keyTier = 'free', meta = {}) {
 function send429(res, info) {
   if (info.retryAfterSec) res.set('Retry-After', String(info.retryAfterSec));
   return res.status(429).json({ ok: false, ...info });
+}
+
+// Derive behavioral signals from a single telemetry snapshot (the shape
+// returned by detect-core's tel.snapshot()). Every scenario's terminal
+// handler runs essentially this same set of checks against its `cumulative`
+// state; centralising here makes /api/detect/score possible and gives us
+// one place to update behavioral thresholds.
+//
+// opts.elapsedMs is the session age. If absent the too_fast signal is
+// skipped (caller doesn't know how long the user has been on the page —
+// e.g. detect.js calling /score on every form submit).
+//
+// Returns an array of signal name strings. Empty array = clean.
+function scoreBehavioral(snap, opts = {}) {
+  const signals = [];
+  if (!snap) return signals;
+  const get = (k, d = 0) => (typeof snap[k] === 'number' ? snap[k] : d);
+
+  if (typeof opts.elapsedMs === 'number' && opts.elapsedMs < 5000) signals.push('too_fast');
+
+  if (get('mouseMoves')    < 15)  signals.push('low_mouse_activity');
+  if (get('mouseEntropy')  < 0.5) signals.push('low_mouse_entropy');
+  if (get('scrollEvents') === 0 && get('mouseMoves') < 60) {
+    signals.push('no_scroll_low_activity');
+  }
+
+  if (get('clickCount') >= 2 && typeof snap.clickDwellMedian === 'number' && snap.clickDwellMedian < 20) {
+    signals.push('synthetic_click_dwell');
+  }
+
+  const vMean = get('mouseVelocityMean');
+  const vStd  = get('mouseVelocityStd');
+  if (vMean > 0 && vStd / vMean < 0.15) signals.push('uniform_mouse_velocity');
+
+  if (get('mouseMoves') > 30 && get('mouseCurvature') < 5) signals.push('straight_line_cursor');
+
+  if (snap.scrollDeltaUniform === true) signals.push('synthetic_scroll_pattern');
+
+  if (typeof snap.firstEventLatencyMs === 'number' && snap.firstEventLatencyMs < 100) {
+    signals.push('superhuman_reaction_time');
+  }
+
+  if (get('keystrokeCount') >= 4 && typeof snap.keystrokeIntervalStd === 'number' && snap.keystrokeIntervalStd < 5) {
+    signals.push('uniform_keystroke_timing');
+  }
+
+  if (get('focusBlurEvents') > 80) signals.push('focus_thrashing');
+
+  return signals;
 }
 
 // risk_tier → action mapping. Mirrors the assignments in shared/risk.js's
@@ -364,6 +414,10 @@ function createScenario({
   });
 
   app.use(express.static(staticDir));
+  // Browser-side shared modules — every scenario page can import collection
+  // logic from /shared/detect-core.js. The directory only contains client
+  // code; server-side modules in shared/*.js stay private (Node-only).
+  app.use('/shared', express.static(path.join(__dirname, 'public')));
 
   // ── Helpers closed over scenario context ─────────────────────────────────
 
@@ -630,6 +684,151 @@ function createScenario({
                entries: await visitorStore.leaderboard(metric, limit) });
   });
 
+  // ── /api/detect/* — endpoints consumed by detect.js (cross-origin) ──────
+  //
+  // detect.js loads from cdn.agentgauntlet.ai on a third-party site and
+  // calls these endpoints from that origin, so the family needs CORS. Phase
+  // 2a echoes any Origin; Phase 3 will restrict per-key to registered
+  // domains.
+  app.use('/api/detect', (req, res, next) => {
+    const origin = req.headers.origin || '*';
+    res.set('Access-Control-Allow-Origin',  origin);
+    res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'X-Pub-Key, Content-Type');
+    res.set('Access-Control-Max-Age',       '3600');
+    res.set('Vary',                         'Origin');
+    if (req.method === 'OPTIONS') return res.status(204).end();
+    next();
+  });
+
+  // GET /api/detect/token — issue a per-page-load HMAC-signed envelope.
+  //
+  // Flow: detect.js calls this once on load to obtain a short-lived token,
+  // then bundles signals + token into the eventual /api/detect/score request
+  // (or a form-submit payload that the enterprise's backend forwards).
+  //
+  // Phase 2a uses the existing agg_* API key as the "pub key". Phase 3 will
+  // introduce a separate enterprise ent_pub_*/ent_sec_* pair with registered
+  // domain locking — at that point the validateKey() call below switches to
+  // a pub-key-table lookup with Origin enforcement.
+  //
+  // Rate limit: per-key burst on a dedicated "key-detect:" bucket so token
+  // traffic doesn't share budget with scenario runs or result reads. Daily/
+  // monthly quota is NOT incremented — token issuance is not a "run".
+  app.get('/api/detect/token', async (req, res) => {
+    const pubKey = req.headers['x-pub-key'] || req.query.key;
+    if (!pubKey) {
+      return res.status(401).json({ ok: false, reason: 'pub_key_required' });
+    }
+    const keyRow = await validateKey(pubKey);
+    if (!keyRow || !keyRow.active) {
+      return res.status(401).json({ ok: false, reason: 'invalid_pub_key' });
+    }
+
+    const burstLimit = keyRow.tier === 'pro' || keyRow.tier === 'enterprise'
+      ? rateLimit.PRO_BURST_PER_MIN : rateLimit.FREE_BURST_PER_MIN;
+    const burst = await rateLimit.checkBurst(`key-detect:${keyRow.key}`, burstLimit);
+    if (!burst.allowed) return send429(res, burst);
+
+    // Capture the requesting domain. detect.js running on a real site sets
+    // Origin; older / non-CORS contexts may set only Referer. The domain is
+    // recorded in the signed envelope so /score can verify it later even if
+    // the bundle is forwarded server-to-server (where Origin won't survive).
+    let domain = null;
+    const originHdr = req.headers.origin || req.headers.referer;
+    if (originHdr) {
+      try { domain = new URL(originHdr).hostname; } catch (_) {}
+    }
+
+    const issued = issueDetectToken({
+      pubKey: keyRow.key,
+      tier:   keyRow.tier,
+      domain,
+    });
+
+    // Each page load gets its own token; no proxy or browser cache should
+    // share one across requests.
+    res.set('Cache-Control', 'no-store, max-age=0');
+    res.json({ ok: true, ...issued });
+  });
+
+  // POST /api/detect/score — score a signed signal bundle from detect.js.
+  //
+  // Body shape:
+  //   {
+  //     token:  "<envelope from /api/detect/token>",
+  //     bundle: {
+  //       fingerprint: { ...same fields scoreFingerprint() expects... },
+  //       telemetry:   { ...same fields scoreBehavioral() expects... },
+  //       elapsedMs:   <ms since page load, optional>,
+  //       page:        "/checkout"          // optional, recorded for audit
+  //     }
+  //   }
+  //
+  // Response (tier-appropriate; mirrors the result endpoint's shape):
+  //   free key      → { score, tier, action, signals[] }
+  //   pro / ent     → + breakdown[{signal,weight}] + thresholds
+  //
+  // Forgery prevention: token must verify (HMAC sig + non-expired). Without
+  // it, anyone POSTing fake bundles would still be rate-limited but could
+  // pollute the visitor's score history. The token's pub key also pins the
+  // bundle's tier — a free key can't request a pro-tier response shape.
+  app.post('/api/detect/score', async (req, res) => {
+    const { token, bundle } = req.body || {};
+    if (!token || !bundle || typeof bundle !== 'object') {
+      return res.status(400).json({ ok: false, reason: 'token_and_bundle_required' });
+    }
+
+    const envelope = verifyDetectToken(token);
+    if (!envelope) {
+      return res.status(401).json({ ok: false, reason: 'invalid_or_expired_token' });
+    }
+
+    // Burst rate limit per pub key on a dedicated bucket so score traffic
+    // doesn't share budget with token issuance, run, or result endpoints.
+    const burstLimit = envelope.tier === 'pro' || envelope.tier === 'enterprise'
+      ? rateLimit.PRO_BURST_PER_MIN : rateLimit.FREE_BURST_PER_MIN;
+    const burst = await rateLimit.checkBurst(`key-detect-score:${envelope.pub}`, burstLimit);
+    if (!burst.allowed) return send429(res, burst);
+
+    // Derive signals from the three sources the platform already supports:
+    //   • HTTP headers       (UA strings, missing client hints, etc.)
+    //   • Browser fingerprint (webdriver flag, canvas/audio hashes, etc.)
+    //   • Behavioral snapshot (mouse, click, keystroke, scroll patterns)
+    //
+    // TLS / JA3 is omitted intentionally — detect.js calls go through CDN,
+    // so the JA3 we'd see is Cloudflare's, not the real client's. JA3
+    // scoring is reserved for the proxy-plugin path (Phase 3+).
+    const headerFlags = scoreHeaders(req.headers);
+    const fpFlags     = scoreFingerprint(bundle.fingerprint || {});
+    const behSignals  = scoreBehavioral(bundle.telemetry || {}, {
+      elapsedMs: typeof bundle.elapsedMs === 'number' ? bundle.elapsedMs : undefined,
+    });
+
+    const signals = [
+      ...headerFlags.hard, ...headerFlags.soft,
+      ...fpFlags.hard,     ...fpFlags.soft,
+      ...behSignals,
+    ];
+    const risk = computeRisk(signals);
+
+    // Cache disabled — the result is bundle-specific.
+    res.set('Cache-Control', 'no-store, max-age=0');
+
+    const base = {
+      ok:     true,
+      score:  risk.score,
+      tier:   risk.tier,
+      action: risk.action,
+    };
+    if (envelope.tier === 'pro' || envelope.tier === 'enterprise') {
+      res.json({ ...base, breakdown: risk.breakdown, thresholds: THRESHOLDS });
+    } else {
+      // Free tier: signal names only, no per-signal weights.
+      res.json({ ...base, signals: risk.breakdown.map(b => b.signal) });
+    }
+  });
+
   // Result lookup for a single past session. Requires an API key (no anonymous
   // access). Three-tier response shape — see resultResponse() in this file.
   //
@@ -736,7 +935,7 @@ module.exports = {
   rateLimitRegistration,
   // Pure helpers available without calling createScenario
   randInt, median,
-  scoreHeaders, scoreFingerprint, scoreTls,
+  scoreHeaders, scoreFingerprint, scoreTls, scoreBehavioral,
   publicRisk, newSessionBase, baseCumulative,
   computeRisk,
 };

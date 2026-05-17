@@ -1,93 +1,52 @@
 'use strict';
 
 // ---------- Telemetry ----------
+//
+// window.AGDetect (loaded by index.html from /shared/detect-core.js) owns
+// fingerprint + generic behavioral telemetry. Login-specific signals are
+// tracked locally and merged into snapshotTelemetry():
+//   passwordKeystrokes      count of keydowns on the password field
+//   passwordPastedNotTyped  paste event fired on password field
+//   usernamePastedNotTyped  paste event fired on username field
+//   usedSsoDecoy            user clicked one of the SSO decoy buttons
+//   trapCheckboxChecked     user ticked the "I am a human" trap checkbox
 
-const tel = {
-  mouseMoves: 0, keystrokeCount: 0, scrollEvents: 0, focusBlurEvents: 0,
-  mouseEntropy: 0, clickCount: 0, clickDwellMedian: 0,
-  mouseVelocityMean: 0, mouseVelocityStd: 0, mouseCurvature: 0,
-  scrollDeltaUniform: false, keystrokeIntervalStd: 0,
-  firstEventLatencyMs: null,
-  // Login-specific
-  passwordKeystrokes: 0, passwordPastedNotTyped: false,
-  usernamePastedNotTyped: false,
-  usedSsoDecoy: false, trapCheckboxChecked: false,
-};
-
-let stepStartTime = Date.now();
-let mousePositions = [];
-let clickDownTimes = [];
-let clickDwells = [];
-let velocitySamples = [];
-let keystrokeTimes = [];
-let passwordKeystrokeTimes = [];
-
-function recordFirstEvent() {
-  if (tel.firstEventLatencyMs === null) {
-    tel.firstEventLatencyMs = Date.now() - stepStartTime;
-  }
-}
-
-document.addEventListener('mousemove', e => {
-  recordFirstEvent();
-  tel.mouseMoves++;
-  const now = Date.now();
-  mousePositions.push({ x: e.clientX, y: e.clientY, t: now });
-  if (mousePositions.length > 200) mousePositions.shift();
-  if (mousePositions.length > 1) {
-    const prev = mousePositions[mousePositions.length - 2];
-    const dt = now - prev.t;
-    if (dt > 0) {
-      const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
-      velocitySamples.push(Math.sqrt(dx*dx + dy*dy) / dt);
-      if (velocitySamples.length > 100) velocitySamples.shift();
-    }
-  }
-}, { passive: true });
-
-document.addEventListener('mousedown', () => { recordFirstEvent(); clickDownTimes.push(Date.now()); });
-document.addEventListener('mouseup', () => {
-  if (clickDownTimes.length > 0) {
-    clickDwells.push(Date.now() - clickDownTimes.pop());
-    tel.clickCount++;
-  }
-});
-
-document.addEventListener('keydown', () => {
-  recordFirstEvent();
-  tel.keystrokeCount++;
-  const now = Date.now();
-  keystrokeTimes.push(now);
-  if (keystrokeTimes.length > 50) keystrokeTimes.shift();
-});
-
-document.addEventListener('scroll', () => { recordFirstEvent(); tel.scrollEvents++; }, { passive: true });
-document.addEventListener('focus', () => tel.focusBlurEvents++, true);
-document.addEventListener('blur', () => tel.focusBlurEvents++, true);
-
-function computeStd(arr) {
-  if (arr.length < 2) return 0;
-  const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
-  return Math.sqrt(arr.reduce((s, x) => s + (x - mean) ** 2, 0) / arr.length);
-}
+const tel = window.AGDetect.startTelemetry();
+let passwordKeystrokes       = 0;
+let passwordPastedNotTyped   = false;
+let usernamePastedNotTyped   = false;
+let usedSsoDecoy             = false;
+let trapCheckboxChecked      = false;
+const passwordKeystrokeTimes = [];
 
 function snapshotTelemetry() {
-  if (velocitySamples.length > 1) {
-    const mean = velocitySamples.reduce((a, b) => a + b, 0) / velocitySamples.length;
-    tel.mouseVelocityMean = mean;
-    tel.mouseVelocityStd  = computeStd(velocitySamples);
-    tel.mouseEntropy = Math.min(1, velocitySamples.length / 50);
-  }
-  const intervals = [];
-  for (let i = 1; i < keystrokeTimes.length; i++) intervals.push(keystrokeTimes[i] - keystrokeTimes[i-1]);
-  if (intervals.length > 1) tel.keystrokeIntervalStd = computeStd(intervals);
+  const snap = tel.snapshot();
 
-  if (clickDwells.length > 0) {
-    const sorted = clickDwells.slice().sort((a, b) => a - b);
-    const m = Math.floor(sorted.length / 2);
-    tel.clickDwellMedian = sorted.length % 2 ? sorted[m] : (sorted[m-1] + sorted[m]) / 2;
+  // Compute std-dev of password-only keystroke intervals — the
+  // uniform_keystroke_timing signal is scored against this scoped value,
+  // not the document-level keystrokeIntervalStd produced by AGDetect.
+  let passwordKsStd = 0;
+  if (passwordKeystrokeTimes.length > 1) {
+    const intervals = [];
+    for (let i = 1; i < passwordKeystrokeTimes.length; i++) {
+      intervals.push(passwordKeystrokeTimes[i] - passwordKeystrokeTimes[i - 1]);
+    }
+    const mean = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+    passwordKsStd = Math.sqrt(
+      intervals.reduce((s, x) => s + (x - mean) ** 2, 0) / intervals.length,
+    );
   }
-  return { ...tel };
+
+  return {
+    ...snap,
+    passwordKeystrokes,
+    passwordPastedNotTyped,
+    usernamePastedNotTyped,
+    usedSsoDecoy,
+    trapCheckboxChecked,
+    // Scope the keystroke-interval std to password input only.
+    keystrokeIntervalStd: passwordKsStd || snap.keystrokeIntervalStd,
+  };
 }
 
 // ---------- Risk badge ----------
@@ -141,8 +100,8 @@ function showStep(n) {
     el.hidden = Number(el.dataset.step) !== n;
   });
   setPip(n);
-  stepStartTime = Date.now();
-  tel.firstEventLatencyMs = null;
+  // Per-step firstEventLatencyMs and interval reset are handled internally
+  // by tel.snapshot() — no manual reset needed here.
 }
 
 // ---------- Canvas: credentials ----------
@@ -312,78 +271,6 @@ async function doStepUp(sessionId, token) {
   });
 }
 
-// ---------- Fingerprint ----------
-
-async function collectFingerprint() {
-  const fp = {};
-  fp.userAgent   = navigator.userAgent;
-  fp.webdriver   = navigator.webdriver || false;
-  fp.pluginsLength = navigator.plugins ? navigator.plugins.length : 0;
-  fp.chrome      = typeof window.chrome !== 'undefined';
-  fp.screen      = { width: screen.width, height: screen.height };
-  fp.tz          = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-  // Canvas hash
-  try {
-    const c = document.createElement('canvas');
-    c.width = 200; c.height = 50;
-    const cx = c.getContext('2d');
-    cx.fillStyle = '#f0f'; cx.fillRect(10,10,50,30);
-    cx.fillStyle = '#0ff'; cx.font = '18px Arial'; cx.fillText('fptest', 20, 35);
-    fp.canvasHash = c.toDataURL().slice(-32);
-  } catch(e) { fp.canvasHash = null; }
-
-  // WebGL
-  try {
-    const c = document.createElement('canvas');
-    const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
-    if (gl) {
-      const ext = gl.getExtension('WEBGL_debug_renderer_info');
-      fp.webglRenderer = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
-    } else { fp.webglMissing = true; }
-  } catch(e) { fp.webglMissing = true; }
-
-  // Audio fingerprint
-  try {
-    const actx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
-    const osc = actx.createOscillator();
-    const analyser = actx.createAnalyser();
-    osc.connect(analyser); analyser.connect(actx.destination);
-    osc.start(0); osc.stop(0.1);
-    await new Promise(r => setTimeout(r, 120));
-    const buf = new Float32Array(analyser.frequencyBinCount);
-    analyser.getFloatFrequencyData(buf);
-    fp.audioHash = buf.slice(0, 10).reduce((s, v) => s + v, 0).toFixed(4);
-    actx.close().catch(() => {});
-  } catch(e) { fp.audioHash = null; }
-
-  // Notifications API inconsistency (headless Chrome indicator)
-  // Checks for a real browser API contradiction, not chrome.runtime presence
-  // (chrome.runtime is undefined in normal web pages, causing false positives)
-  try {
-    if (navigator.permissions && typeof Notification !== 'undefined') {
-      const perm = await navigator.permissions.query({ name: 'notifications' });
-      fp.notifMismatch = Notification.permission === 'denied' && perm.state === 'prompt';
-    } else {
-      fp.notifMismatch = false;
-    }
-  } catch(e) { fp.notifMismatch = false; }
-
-  // rAF frame count (unthrottled in headless)
-  await new Promise(resolve => {
-    let frames = 0;
-    const t0 = performance.now();
-    function tick() {
-      frames++;
-      if (performance.now() - t0 < 50) requestAnimationFrame(tick);
-      else { fp.rafFrame = frames; resolve(); }
-    }
-    requestAnimationFrame(tick);
-  });
-
-  return fp;
-}
-
 // ---------- Main flow ----------
 
 let SESSION_ID = null, TOKEN = null;
@@ -447,37 +334,37 @@ async function init() {
 
   // Wire up SSO decoys
   document.getElementById('btn-sso').addEventListener('click', () => {
-    tel.usedSsoDecoy = true;
+    usedSsoDecoy = true;
     setStatus('Enterprise SSO is not available for personal accounts.', 'text-amber-600');
   });
   document.getElementById('btn-google').addEventListener('click', () => {
-    tel.usedSsoDecoy = true;
+    usedSsoDecoy = true;
     setStatus('Google sign-in is not available for this account type.', 'text-amber-600');
   });
 
   // Wire trap checkbox
   document.getElementById('trap-checkbox').addEventListener('change', e => {
-    tel.trapCheckboxChecked = e.target.checked;
+    trapCheckboxChecked = e.target.checked;
   });
 
   // Password keystroke tracking
   const pwdEl = document.getElementById('login-password');
   pwdEl.addEventListener('keydown', () => {
-    tel.passwordKeystrokes++;
+    passwordKeystrokes++;
     passwordKeystrokeTimes.push(Date.now());
   });
   pwdEl.addEventListener('paste', () => {
-    tel.passwordPastedNotTyped = true;
+    passwordPastedNotTyped = true;
   });
 
   // Username paste tracking
   document.getElementById('login-username').addEventListener('paste', () => {
-    tel.usernamePastedNotTyped = true;
+    usernamePastedNotTyped = true;
   });
 
   // Fingerprint (non-blocking)
   setStatus('Initializing…');
-  const fp = await collectFingerprint();
+  const fp = await window.AGDetect.collectFingerprint();
   const fpRes = await fetch('/api/login/fingerprint', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sessionId: SESSION_ID, token: TOKEN, fingerprint: fp }),
@@ -505,18 +392,6 @@ async function submitStep1() {
   const trapChecked = document.getElementById('trap-checkbox').checked;
   const honeypot = document.getElementById('hp-username-confirm').value;
 
-  // Compute keystroke interval std for password
-  const pwIntervals = [];
-  for (let i = 1; i < passwordKeystrokeTimes.length; i++) {
-    pwIntervals.push(passwordKeystrokeTimes[i] - passwordKeystrokeTimes[i-1]);
-  }
-  if (pwIntervals.length > 1) {
-    const mean = pwIntervals.reduce((a, b) => a + b, 0) / pwIntervals.length;
-    tel.keystrokeIntervalStd = Math.sqrt(pwIntervals.reduce((s, x) => s + (x-mean)**2, 0) / pwIntervals.length);
-  }
-
-  const telSnap = snapshotTelemetry();
-
   const res = await fetch('/api/login/step1', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -527,14 +402,10 @@ async function submitStep1() {
         honeypotUsernameConfirm: honeypot,
         panelId: document.getElementById('panel-login').id,
       },
-      telemetry: {
-        ...telSnap,
-        passwordKeystrokes: tel.passwordKeystrokes,
-        passwordPastedNotTyped: tel.passwordPastedNotTyped,
-        usernamePastedNotTyped: tel.usernamePastedNotTyped,
-        usedSsoDecoy: tel.usedSsoDecoy,
-        trapCheckboxChecked: trapChecked,
-      },
+      // snapshotTelemetry() merges generic AGDetect signals with the
+      // login-specific fields (password/username paste, SSO decoy, trap
+      // checkbox, password-scoped keystroke std).
+      telemetry: snapshotTelemetry(),
     }),
   });
   const data = await res.json();

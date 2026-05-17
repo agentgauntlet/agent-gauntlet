@@ -5,52 +5,33 @@
 (async function () {
 
   // ---------- Telemetry ----------
-  const tel = {
-    mouseMoves: 0, mousePoints: [],
-    keystrokeCount: 0, keystrokeTimes: [],
-    scrollEvents: 0, scrollDeltas: [],
-    focusBlurEvents: 0, clickDwells: [],
-    visibilityChanges: 0,
-    stepShownAt: performance.now(), firstEventLatencyMs: null,
-    // Payment-specific
-    cardKeystrokes: 0, cvvKeystrokes: 0,
-    cardGroupPauses: [],   // ms between groups of 4 digits
-    cardLastGroupTime: null,
-    cardDigitCount: 0,
-    cardPastedNotTyped: false, cvvPastedNotTyped: false,
-  };
-
-  function noteFirst() {
-    if (tel.firstEventLatencyMs === null)
-      tel.firstEventLatencyMs = +(performance.now() - tel.stepShownAt).toFixed(1);
-  }
-
-  document.addEventListener('mousemove', e => { tel.mouseMoves++; if (tel.mousePoints.length < 800) tel.mousePoints.push([e.clientX, e.clientY, performance.now()]); noteFirst(); });
-  document.addEventListener('keydown', () => { tel.keystrokeCount++; tel.keystrokeTimes.push(performance.now()); noteFirst(); });
-  window.addEventListener('scroll', () => { tel.scrollEvents++; noteFirst(); }, { passive: true });
-  window.addEventListener('wheel', e => { tel.scrollDeltas.push(+e.deltaY.toFixed(3)); }, { passive: true });
-  document.addEventListener('focusin', () => tel.focusBlurEvents++);
-  document.addEventListener('focusout', () => tel.focusBlurEvents++);
-  document.addEventListener('visibilitychange', () => tel.visibilityChanges++);
-  let downAt = null;
-  document.addEventListener('mousedown', () => { downAt = performance.now(); noteFirst(); });
-  document.addEventListener('mouseup', () => { if (downAt !== null) { tel.clickDwells.push(+(performance.now() - downAt).toFixed(1)); downAt = null; } });
+  // window.AGDetect (loaded by index.html from /shared/detect-core.js)
+  // owns fingerprint + generic behavioral telemetry. Payment-specific
+  // signals — card/CVV typing rhythm and paste detection — are tracked
+  // locally and merged into snap() before submission.
+  const tel = window.AGDetect.startTelemetry();
+  let cardKeystrokes      = 0;
+  let cvvKeystrokes       = 0;
+  const cardGroupPauses   = []; // ms between groups of 4 digits
+  let cardLastGroupTime   = null;
+  let cardPastedNotTyped  = false;
+  let cvvPastedNotTyped   = false;
 
   // Card number keystroke tracking — detect group pauses (4-4-4-4 rhythm).
   const cardInput = document.getElementById('card-number');
   cardInput.addEventListener('keydown', () => {
-    tel.cardKeystrokes++;
+    cardKeystrokes++;
     const now = performance.now();
     const rawLen = cardInput.value.replace(/\D/g, '').length;
     // Every 4th digit, record the pause since the last group.
     if (rawLen > 0 && rawLen % 4 === 0) {
-      if (tel.cardLastGroupTime !== null) {
-        tel.cardGroupPauses.push(+(now - tel.cardLastGroupTime).toFixed(1));
+      if (cardLastGroupTime !== null) {
+        cardGroupPauses.push(+(now - cardLastGroupTime).toFixed(1));
       }
-      tel.cardLastGroupTime = now;
+      cardLastGroupTime = now;
     }
   });
-  cardInput.addEventListener('paste', () => { tel.cardPastedNotTyped = true; });
+  cardInput.addEventListener('paste', () => { cardPastedNotTyped = true; });
   cardInput.addEventListener('input', () => {
     // Format as groups of 4.
     let raw = cardInput.value.replace(/\D/g, '').slice(0, 16);
@@ -58,64 +39,18 @@
   });
 
   const cvvInput = document.getElementById('card-cvv');
-  cvvInput.addEventListener('keydown', () => tel.cvvKeystrokes++);
-  cvvInput.addEventListener('paste', () => { tel.cvvPastedNotTyped = true; });
-
-  function entropy(pts) {
-    if (pts.length < 3) return 0;
-    const bins = new Array(16).fill(0); let n = 0;
-    for (let i = 1; i < pts.length; i++) {
-      const dx = pts[i][0] - pts[i-1][0], dy = pts[i][1] - pts[i-1][1];
-      if (!dx && !dy) continue;
-      bins[Math.min(15, Math.floor((Math.atan2(dy, dx) + Math.PI) / (2*Math.PI) * 16))]++; n++;
-    }
-    if (!n) return 0;
-    return bins.reduce((h, c) => c ? h - (c/n)*Math.log2(c/n) : h, 0);
-  }
-  function meanStd(arr) {
-    if (!arr || !arr.length) return { mean: 0, std: 0 };
-    const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
-    return { mean: +mean.toFixed(3), std: +Math.sqrt(arr.reduce((s,x) => s+(x-mean)**2, 0)/arr.length).toFixed(3) };
-  }
-  function median(arr) {
-    if (!arr || !arr.length) return 0;
-    const s = arr.slice().sort((a,b) => a-b), m = Math.floor(s.length/2);
-    return s.length%2 ? s[m] : (s[m-1]+s[m])/2;
-  }
-  function velStats(pts) {
-    if (pts.length < 3) return { mean: 0, std: 0, curvature: 0 };
-    const v = []; let curv = 0, lastA = null;
-    for (let i = 1; i < pts.length; i++) {
-      const [x1,y1,t1] = pts[i-1], [x2,y2,t2] = pts[i];
-      const dt = Math.max(1, t2-t1), dx = x2-x1, dy = y2-y1;
-      v.push(Math.sqrt(dx*dx+dy*dy)/dt);
-      if (dx||dy) { const a = Math.atan2(dy,dx); if (lastA!==null) { let d=Math.abs(a-lastA); if(d>Math.PI) d=2*Math.PI-d; curv+=d; } lastA=a; }
-    }
-    const ms = meanStd(v);
-    return { mean: ms.mean, std: ms.std, curvature: +curv.toFixed(3) };
-  }
+  cvvInput.addEventListener('keydown', () => cvvKeystrokes++);
+  cvvInput.addEventListener('paste', () => { cvvPastedNotTyped = true; });
 
   function snap() {
-    const vel = velStats(tel.mousePoints);
-    const ks  = [];
-    for (let i = 1; i < tel.keystrokeTimes.length; i++) ks.push(tel.keystrokeTimes[i] - tel.keystrokeTimes[i-1]);
-    const ksStats = meanStd(ks);
-    const sdUniform = tel.scrollDeltas.length > 1 && tel.scrollDeltas.every(d => Number.isInteger(d)) && new Set(tel.scrollDeltas).size <= 2;
-    const t = {
-      mouseMoves: tel.mouseMoves, mouseEntropy: +entropy(tel.mousePoints).toFixed(3),
-      keystrokeCount: tel.keystrokeCount, scrollEvents: tel.scrollEvents, focusBlurEvents: tel.focusBlurEvents,
-      mouseVelocityMean: vel.mean, mouseVelocityStd: vel.std, mouseCurvature: vel.curvature,
-      clickDwellMedian: +median(tel.clickDwells).toFixed(1), clickCount: tel.clickDwells.length,
-      scrollDeltaUniform: sdUniform, keystrokeIntervalStd: ksStats.std,
-      visibilityChanges: tel.visibilityChanges, firstEventLatencyMs: tel.firstEventLatencyMs,
-      cardKeystrokes: tel.cardKeystrokes, cvvKeystrokes: tel.cvvKeystrokes,
-      cardGroupPauses: tel.cardGroupPauses.slice(),
-      cardPastedNotTyped: tel.cardPastedNotTyped, cvvPastedNotTyped: tel.cvvPastedNotTyped,
+    return {
+      ...tel.snapshot(),
+      cardKeystrokes,
+      cvvKeystrokes,
+      cardGroupPauses: cardGroupPauses.slice(),
+      cardPastedNotTyped,
+      cvvPastedNotTyped,
     };
-    tel.mouseMoves=0; tel.mousePoints=[]; tel.keystrokeCount=0; tel.keystrokeTimes=[];
-    tel.scrollEvents=0; tel.scrollDeltas=[]; tel.focusBlurEvents=0; tel.clickDwells=[];
-    tel.firstEventLatencyMs=null; tel.stepShownAt=performance.now();
-    return t;
   }
 
   function setStatus(msg, cls) {
@@ -185,26 +120,6 @@
 
   function blockedUI(data) {
     showTerminal('block', session && session.handle, data && data.risk, data);
-  }
-
-  // ---------- Fingerprint ----------
-  async function sha256Hex(s) {
-    try { const buf=new TextEncoder().encode(s), h=await crypto.subtle.digest('SHA-256',buf); return Array.from(new Uint8Array(h)).map(b=>b.toString(16).padStart(2,'0')).join('').slice(0,32); } catch { return null; }
-  }
-
-  async function collectFingerprint() {
-    const fp = {};
-    try { const c=document.createElement('canvas'); c.width=280; c.height=60; const ctx=c.getContext('2d'); ctx.textBaseline='top'; ctx.font="14px 'Arial'"; ctx.fillStyle='#069'; ctx.fillText('Cwm fjordbank glyphs vext quiz, 🦊🍔',2,2); ctx.strokeStyle='rgba(102,204,0,0.7)'; ctx.beginPath(); ctx.arc(50,30,18,0,Math.PI*2); ctx.stroke(); fp.canvasHash=await sha256Hex(c.toDataURL()); } catch(e) { fp.canvasError=String(e); }
-    try { const gl=document.createElement('canvas').getContext('webgl'); if(gl){const d=gl.getExtension('WEBGL_debug_renderer_info'); if(d){fp.webglVendor=gl.getParameter(d.UNMASKED_VENDOR_WEBGL); fp.webglRenderer=gl.getParameter(d.UNMASKED_RENDERER_WEBGL);} fp.webglVersion=gl.getParameter(gl.VERSION);}else{fp.webglMissing=true;} } catch(e) { fp.webglError=String(e); }
-    try { const C=window.OfflineAudioContext||window.webkitOfflineAudioContext; if(C){const ctx=new C(1,5000,44100),osc=ctx.createOscillator(),comp=ctx.createDynamicsCompressor(); osc.type='triangle'; osc.frequency.value=1000; comp.threshold.value=-50; comp.knee.value=40; comp.ratio.value=12; comp.attack.value=0; comp.release.value=0.2; osc.connect(comp); comp.connect(ctx.destination); osc.start(0); const buf=await ctx.startRendering(),ch=buf.getChannelData(0); let sum=0; for(let i=4500;i<5000;i++) sum+=Math.abs(ch[i]); fp.audioHash=sum.toFixed(8);} } catch {}
-    fp.userAgent=navigator.userAgent; fp.platform=navigator.platform; fp.webdriver=navigator.webdriver===true;
-    fp.pluginsLength=navigator.plugins?navigator.plugins.length:0; fp.chrome=!!window.chrome;
-    fp.screen={width:screen.width,height:screen.height,availWidth:screen.availWidth,availHeight:screen.availHeight,colorDepth:screen.colorDepth};
-    fp.devicePixelRatio=window.devicePixelRatio;
-    try { fp.tzOffset=new Date().getTimezoneOffset(); fp.tz=Intl.DateTimeFormat().resolvedOptions().timeZone; } catch {}
-    try { if(navigator.permissions&&typeof Notification!=='undefined'){const n=await navigator.permissions.query({name:'notifications'}); fp.notifPerm=n.state; fp.notifAPI=Notification.permission; fp.notifMismatch=fp.notifAPI==='denied'&&fp.notifPerm==='prompt';} } catch {}
-    fp.rafFrame = await new Promise(r=>{const t=performance.now(); requestAnimationFrame(()=>r(+(performance.now()-t).toFixed(2)));});
-    return fp;
   }
 
   // ---------- Canvas rendering helpers ----------
@@ -342,7 +257,7 @@
 
   // Collect + submit fingerprint.
   setStatus('Verifying environment…');
-  const fp = await collectFingerprint();
+  const fp = await window.AGDetect.collectFingerprint();
   try {
     const fpData = await postJSON('/api/payment/fingerprint', { sessionId: session.sessionId, token: session.token, fingerprint: fp });
     session.handle = fpData.handle; session.visitorId = fpData.visitorId;

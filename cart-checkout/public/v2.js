@@ -3,177 +3,12 @@
 // the source of truth for which item / shipping / button is "correct".
 
 (async function () {
-  // ---------- Telemetry: collected globally, flushed per step ----------
-  // Tracks not just counts, but distributions: velocity profile, click dwell,
-  // scroll-delta variance, per-step reaction time. These distinguish real
-  // human input from scripted/teleported cursor activity.
-  const tel = {
-    mouseMoves: 0,
-    mousePoints: [],     // [x, y, t]
-    keystrokeCount: 0,
-    keystrokeTimes: [],
-    scrollEvents: 0,
-    scrollDeltas: [],
-    focusBlurEvents: 0,
-    clickDwells: [],     // ms between mousedown and mouseup per click
-    visibilityChanges: 0,
-    stepShownAt: performance.now(),
-    firstEventLatencyMs: null,
-  };
-
-  function noteFirstEvent() {
-    if (tel.firstEventLatencyMs === null) {
-      tel.firstEventLatencyMs = +(performance.now() - tel.stepShownAt).toFixed(1);
-    }
-  }
-
-  document.addEventListener('mousemove', (e) => {
-    tel.mouseMoves++;
-    if (tel.mousePoints.length < 800) {
-      tel.mousePoints.push([e.clientX, e.clientY, performance.now()]);
-    }
-    noteFirstEvent();
-  });
-  document.addEventListener('keydown', () => {
-    tel.keystrokeCount++;
-    tel.keystrokeTimes.push(performance.now());
-    noteFirstEvent();
-  });
-  window.addEventListener('scroll', () => {
-    tel.scrollEvents++;
-    noteFirstEvent();
-  }, { passive: true });
-  window.addEventListener('wheel', (e) => {
-    tel.scrollDeltas.push(+e.deltaY.toFixed(3));
-  }, { passive: true });
-  document.addEventListener('focusin', () => { tel.focusBlurEvents++; });
-  document.addEventListener('focusout', () => { tel.focusBlurEvents++; });
-  document.addEventListener('visibilitychange', () => { tel.visibilityChanges++; });
-
-  // Click-dwell tracking on any button/clickable.
-  let downAt = null, downTarget = null;
-  document.addEventListener('mousedown', (e) => {
-    downAt = performance.now();
-    downTarget = e.target;
-    noteFirstEvent();
-  });
-  document.addEventListener('mouseup', (e) => {
-    if (downAt !== null) {
-      tel.clickDwells.push(+(performance.now() - downAt).toFixed(1));
-      downAt = null; downTarget = null;
-    }
-  });
-
-  function entropy(points) {
-    if (points.length < 3) return 0;
-    const bins = new Array(16).fill(0);
-    let n = 0;
-    for (let i = 1; i < points.length; i++) {
-      const dx = points[i][0] - points[i - 1][0];
-      const dy = points[i][1] - points[i - 1][1];
-      if (dx === 0 && dy === 0) continue;
-      const a = (Math.atan2(dy, dx) + Math.PI) / (2 * Math.PI);
-      bins[Math.min(15, Math.floor(a * 16))]++;
-      n++;
-    }
-    if (n === 0) return 0;
-    let h = 0;
-    for (const c of bins) {
-      if (c === 0) continue;
-      const p = c / n;
-      h -= p * Math.log2(p);
-    }
-    return h;
-  }
-
-  function meanStd(arr) {
-    if (!arr || arr.length === 0) return { mean: 0, std: 0, n: 0 };
-    const n = arr.length;
-    const mean = arr.reduce((a, b) => a + b, 0) / n;
-    const variance = arr.reduce((s, x) => s + (x - mean) ** 2, 0) / n;
-    return { mean: +mean.toFixed(3), std: +Math.sqrt(variance).toFixed(3), n };
-  }
-  function median(arr) {
-    if (!arr || arr.length === 0) return 0;
-    const s = arr.slice().sort((a, b) => a - b);
-    const m = Math.floor(s.length / 2);
-    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-  }
-  function velocityStats(points) {
-    if (points.length < 3) return { mean: 0, std: 0, curvature: 0 };
-    const v = [];
-    let curvSum = 0;
-    let lastAngle = null;
-    for (let i = 1; i < points.length; i++) {
-      const [x1, y1, t1] = points[i - 1];
-      const [x2, y2, t2] = points[i];
-      const dt = Math.max(1, t2 - t1);
-      const dx = x2 - x1, dy = y2 - y1;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      v.push(dist / dt);                            // px/ms
-      if (dx !== 0 || dy !== 0) {
-        const ang = Math.atan2(dy, dx);
-        if (lastAngle !== null) {
-          let d = Math.abs(ang - lastAngle);
-          if (d > Math.PI) d = 2 * Math.PI - d;
-          curvSum += d;
-        }
-        lastAngle = ang;
-      }
-    }
-    const ms = meanStd(v);
-    return { mean: ms.mean, std: ms.std, curvature: +curvSum.toFixed(3) };
-  }
-
-  function snapshotTelemetry() {
-    const vel = velocityStats(tel.mousePoints);
-    const dwell = meanStd(tel.clickDwells);
-    const scrollDeltaStats = meanStd(tel.scrollDeltas);
-    // Are scroll deltas all integers and uniform? Synthetic scrolls usually are.
-    const scrollDeltaUniform = tel.scrollDeltas.length > 1
-      ? tel.scrollDeltas.every(d => Number.isInteger(d)) && new Set(tel.scrollDeltas).size <= 2
-      : false;
-    // Inter-keystroke interval stddev — humans vary, bots type at constant rate.
-    const ksIntervals = [];
-    for (let i = 1; i < tel.keystrokeTimes.length; i++) {
-      ksIntervals.push(tel.keystrokeTimes[i] - tel.keystrokeTimes[i - 1]);
-    }
-    const ksStats = meanStd(ksIntervals);
-
-    const snap = {
-      // Originals (kept for backwards compatibility with existing scoring)
-      mouseMoves: tel.mouseMoves,
-      mouseEntropy: +entropy(tel.mousePoints).toFixed(3),
-      keystrokeCount: tel.keystrokeCount,
-      scrollEvents: tel.scrollEvents,
-      focusBlurEvents: tel.focusBlurEvents,
-      // New behavioral signals
-      mouseVelocityMean: vel.mean,
-      mouseVelocityStd:  vel.std,
-      mouseCurvature:    vel.curvature,
-      clickDwellMedian:  +median(tel.clickDwells).toFixed(1),
-      clickDwellStd:     dwell.std,
-      clickCount:        tel.clickDwells.length,
-      scrollDeltaStd:    scrollDeltaStats.std,
-      scrollDeltaUniform,
-      keystrokeIntervalStd: ksStats.std,
-      visibilityChanges: tel.visibilityChanges,
-      firstEventLatencyMs: tel.firstEventLatencyMs,
-    };
-    // Reset deltas so the next step reports its own activity.
-    tel.mouseMoves = 0;
-    tel.mousePoints = [];
-    tel.keystrokeCount = 0;
-    tel.keystrokeTimes = [];
-    tel.scrollEvents = 0;
-    tel.scrollDeltas = [];
-    tel.focusBlurEvents = 0;
-    tel.clickDwells = [];
-    tel.visibilityChanges = 0;
-    tel.firstEventLatencyMs = null;
-    tel.stepShownAt = performance.now();
-    return snap;
-  }
+  // ---------- Telemetry + fingerprint ----------
+  // Both now live in window.AGDetect (loaded from /shared/detect-core.js
+  // by v2.html). We start a per-page telemetry collector and call
+  // .snapshot() at each step boundary to flush counters and produce the
+  // payload the server's accumulateTelemetry() expects.
+  const tel = window.AGDetect.startTelemetry();
 
   // ---------- Helpers ----------
   function setStatus(msg, cls) {
@@ -275,7 +110,7 @@
             sessionId: session.sessionId,
             token: session.token,
             answer: input.value.trim(),
-            telemetry: snapshotTelemetry(),
+            telemetry: tel.snapshot(),
           }),
         });
         const data = await verify.json();
@@ -316,116 +151,6 @@
       }
     });
   }
-  // ---------- Fingerprint collection ----------
-  async function sha256Hex(s) {
-    try {
-      const buf = new TextEncoder().encode(s);
-      const hash = await crypto.subtle.digest('SHA-256', buf);
-      return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
-    } catch (e) { return null; }
-  }
-
-  async function collectFingerprint() {
-    const fp = {};
-
-    // Canvas hash — different GPUs / OS font renderers produce different pixels.
-    try {
-      const c = document.createElement('canvas');
-      c.width = 280; c.height = 60;
-      const ctx = c.getContext('2d');
-      ctx.textBaseline = 'top';
-      ctx.font = "14px 'Arial'";
-      ctx.fillStyle = '#069';
-      ctx.fillText('Cwm fjordbank glyphs vext quiz, 🦊🍔', 2, 2);
-      ctx.strokeStyle = 'rgba(102,204,0,0.7)';
-      ctx.beginPath(); ctx.arc(50, 30, 18, 0, Math.PI * 2); ctx.stroke();
-      const url = c.toDataURL();
-      fp.canvasHash = await sha256Hex(url);
-      fp.canvasLen = url.length;
-    } catch (e) { fp.canvasError = String(e); }
-
-    // WebGL renderer / vendor — headless / VM environments leak here.
-    try {
-      const gl = document.createElement('canvas').getContext('webgl');
-      if (gl) {
-        const dbg = gl.getExtension('WEBGL_debug_renderer_info');
-        if (dbg) {
-          fp.webglVendor = gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL);
-          fp.webglRenderer = gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL);
-        }
-        fp.webglVersion = gl.getParameter(gl.VERSION);
-      } else {
-        fp.webglMissing = true;
-      }
-    } catch (e) { fp.webglError = String(e); }
-
-    // Audio fingerprint via OfflineAudioContext — subtle DSP differences across stacks.
-    try {
-      const Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
-      if (Ctx) {
-        const ctx = new Ctx(1, 5000, 44100);
-        const osc = ctx.createOscillator();
-        osc.type = 'triangle'; osc.frequency.value = 1000;
-        const comp = ctx.createDynamicsCompressor();
-        comp.threshold.value = -50; comp.knee.value = 40; comp.ratio.value = 12;
-        comp.attack.value = 0; comp.release.value = 0.2;
-        osc.connect(comp); comp.connect(ctx.destination);
-        osc.start(0);
-        const buf = await ctx.startRendering();
-        const ch = buf.getChannelData(0);
-        let sum = 0;
-        for (let i = 4500; i < 5000; i++) sum += Math.abs(ch[i]);
-        fp.audioHash = sum.toFixed(8);
-      }
-    } catch (e) { fp.audioError = String(e); }
-
-    // Navigator
-    fp.userAgent = navigator.userAgent;
-    fp.languages = Array.isArray(navigator.languages) ? navigator.languages.slice(0, 5) : null;
-    fp.platform = navigator.platform;
-    fp.hardwareConcurrency = navigator.hardwareConcurrency || null;
-    fp.deviceMemory = navigator.deviceMemory || null;
-    fp.webdriver = navigator.webdriver === true;
-    fp.pluginsLength = navigator.plugins ? navigator.plugins.length : 0;
-    fp.chrome = !!window.chrome;
-    fp.chromeRuntime = !!(window.chrome && window.chrome.runtime);
-
-    // Screen + window
-    fp.screen = {
-      width: screen.width, height: screen.height,
-      availWidth: screen.availWidth, availHeight: screen.availHeight,
-      colorDepth: screen.colorDepth,
-    };
-    fp.devicePixelRatio = window.devicePixelRatio;
-    fp.windowInner = { width: window.innerWidth, height: window.innerHeight };
-
-    // Timezone
-    try {
-      fp.tzOffset = new Date().getTimezoneOffset();
-      fp.tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    } catch (e) {}
-
-    // Headless Chrome bug: Notification.permission === 'denied' while
-    // permissions.query says 'prompt'.
-    try {
-      if (navigator.permissions && navigator.permissions.query && typeof Notification !== 'undefined') {
-        const notif = await navigator.permissions.query({ name: 'notifications' });
-        fp.notifPerm = notif.state;
-        fp.notifAPI = Notification.permission;
-        fp.notifMismatch = (fp.notifAPI === 'denied' && fp.notifPerm === 'prompt');
-      }
-    } catch (e) {}
-
-    // requestAnimationFrame timing — headless environments often fire rAF
-    // immediately rather than at the next display refresh (~16ms).
-    fp.rafFrame = await new Promise(resolve => {
-      const t0 = performance.now();
-      requestAnimationFrame(() => resolve(+(performance.now() - t0).toFixed(2)));
-    });
-
-    return fp;
-  }
-
   function drawPrice(c, text, big = false) {
     const ctx = c.getContext('2d');
     ctx.clearRect(0, 0, c.width, c.height);
@@ -474,7 +199,7 @@
   // Skipped when resuming a CV-agent session (fingerprint already submitted via API)
   if (session.requireFingerprint !== false) {
     setStatus('Verifying environment…');
-    const fp = await collectFingerprint();
+    const fp = await window.AGDetect.collectFingerprint();
     try {
       const fpRes = await fetch('/api/v2/fingerprint', {
         method: 'POST',
@@ -548,7 +273,7 @@
       sessionId: session.sessionId,
       token: session.token,
       step: 1,
-      telemetry: snapshotTelemetry(),
+      telemetry: tel.snapshot(),
       answer: {
         itemId,
         clickedDecoy: false,
@@ -573,7 +298,7 @@
       sessionId: session.sessionId,
       token: session.token,
       step: 1,
-      telemetry: snapshotTelemetry(),
+      telemetry: tel.snapshot(),
       answer: { itemId: null, clickedDecoy: which },
     };
     const data = await postJSON('/api/v2/step', payload);
@@ -616,7 +341,7 @@
       sessionId: session.sessionId,
       token: session.token,
       step: 2,
-      telemetry: snapshotTelemetry(),
+      telemetry: tel.snapshot(),
       answer: { shippingId: shipId },
     };
     const data = await postJSON('/api/v2/step', payload);
@@ -680,7 +405,7 @@
       sessionId: session.sessionId,
       token: session.token,
       clickedBtnId: btnId,
-      telemetry: snapshotTelemetry(),
+      telemetry: tel.snapshot(),
     };
     const data = await postJSON('/api/v2/checkout', payload);
     if (data.risk) updateRiskBadge(data.risk, session.handle);
