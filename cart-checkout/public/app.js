@@ -163,47 +163,10 @@
   }
 
   // ---------- Behavioral telemetry ----------
-  const telemetry = {
-    mouseMoves: 0,
-    mousePoints: [],
-    keystrokeCount: 0,
-    scrollEvents: 0,
-    focusBlurEvents: 0,
-  };
-  document.addEventListener('mousemove', (e) => {
-    telemetry.mouseMoves++;
-    if (telemetry.mousePoints.length < 600) {
-      telemetry.mousePoints.push([e.clientX, e.clientY]);
-    }
-  });
-  document.addEventListener('keydown', () => { telemetry.keystrokeCount++; });
-  window.addEventListener('scroll', () => { telemetry.scrollEvents++; }, { passive: true });
-  document.addEventListener('focusin', () => { telemetry.focusBlurEvents++; });
-  document.addEventListener('focusout', () => { telemetry.focusBlurEvents++; });
-
-  function computeMouseEntropy(points) {
-    if (points.length < 3) return 0;
-    // Shannon entropy of segment-angle histogram across 16 bins.
-    const bins = new Array(16).fill(0);
-    let n = 0;
-    for (let i = 1; i < points.length; i++) {
-      const dx = points[i][0] - points[i - 1][0];
-      const dy = points[i][1] - points[i - 1][1];
-      if (dx === 0 && dy === 0) continue;
-      const a = (Math.atan2(dy, dx) + Math.PI) / (2 * Math.PI); // 0..1
-      const idx = Math.min(15, Math.floor(a * 16));
-      bins[idx]++;
-      n++;
-    }
-    if (n === 0) return 0;
-    let h = 0;
-    for (const c of bins) {
-      if (c === 0) continue;
-      const p = c / n;
-      h -= p * Math.log2(p);
-    }
-    return h; // 0..4
-  }
+  // Fingerprint + telemetry collection live in window.AGDetect, loaded by
+  // index.html from /shared/detect-core.js. We start a per-page collector
+  // and call .snapshot() at submit time.
+  const tel = window.AGDetect.startTelemetry();
 
   // ---------- Submit ----------
   async function submitCheckout(clickedButtonId) {
@@ -211,13 +174,7 @@
     const payload = {
       sessionId: session.sessionId,
       token: session.token,
-      telemetry: {
-        mouseMoves: telemetry.mouseMoves,
-        mouseEntropy: +computeMouseEntropy(telemetry.mousePoints).toFixed(3),
-        keystrokeCount: telemetry.keystrokeCount,
-        scrollEvents: telemetry.scrollEvents,
-        focusBlurEvents: telemetry.focusBlurEvents,
-      },
+      telemetry: tel.snapshot(),
       challenges: {
         clickedButtonId,
         slideCompleted,
