@@ -88,6 +88,18 @@
         reverse_proxy localhost:3000
     }
 
+    # detect.js shared browser modules (every scenario serves /shared/* —
+    # route to cart for consistency with /api/leaderboard)
+    handle /shared/* {
+        reverse_proxy localhost:3000
+    }
+
+    # /api/detect/{token,score} endpoints — registered by createScenario()
+    # on every scenario server. Route to cart.
+    handle /api/detect/* {
+        reverse_proxy localhost:3000
+    }
+
     # Leaderboard (served by cart, shared DB)
     handle /leaderboard* {
         reverse_proxy localhost:3000
