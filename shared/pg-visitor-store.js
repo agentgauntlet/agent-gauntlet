@@ -25,6 +25,21 @@ const DIMENSIONS = {
                      'no_user_agent', 'no_accept_language', 'no_accept_encoding', 'no_fingerprint_object'],
 };
 
+// Collapse a signal array into { name: count } and dimension totals. Used to
+// pre-compute the per-row aggregates stored in leaderboard_entries so the
+// leaderboard query never has to re-join session_signals.
+function aggregateSignals(signals) {
+  const counts = {};
+  for (const sig of signals || []) {
+    counts[sig] = (counts[sig] || 0) + 1;
+  }
+  const dimensions = {};
+  for (const [dim, sigs] of Object.entries(DIMENSIONS)) {
+    dimensions[dim] = sigs.reduce((sum, s) => sum + (counts[s] || 0), 0);
+  }
+  return { counts, dimensions };
+}
+
 class PgVisitorStore extends VisitorStore {
   constructor() {
     super();
@@ -144,6 +159,29 @@ class PgVisitorStore extends VisitorStore {
             );
           }
         }
+
+        // Denormalised rollup that survives the 7-day TTL on sessions /
+        // session_signals. The leaderboard reads from this table exclusively.
+        const { counts: sigCounts, dimensions: sigDims } = aggregateSignals(visit.signals);
+        await client.query(`
+          INSERT INTO ${G}.leaderboard_entries
+            (session_id, visitor_id, handle, scenario, outcome,
+             risk_score, risk_tier, had_step_up, step_up_passed,
+             agent_mode, api_key, ja3_hash, user_agent, elapsed_ms,
+             signal_dimensions, signal_counts, ended_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+          ON CONFLICT (session_id) DO NOTHING
+        `, [
+          visit.sessionId, visitorId, handle, visit.scenario || 'unknown', visit.outcome,
+          visit.score, visit.tier, hadStepUp, stepUpPassed,
+          visit.agentMode || 'headless',
+          attrs.apiKey  || null,
+          attrs.ja3Hash || null,
+          attrs.userAgent ? attrs.userAgent.slice(0, 200) : null,
+          visit.elapsedMs || null,
+          JSON.stringify(sigDims), JSON.stringify(sigCounts),
+          now,
+        ]);
       }
 
       if (attrs.ja3Hash) {
@@ -165,6 +203,22 @@ class PgVisitorStore extends VisitorStore {
     return this.get(visitorId);
   }
 
+  // Look up a single session's result row. Returns null if the session_id is
+  // not present. Ownership (api_key match) is enforced by the caller — this
+  // method returns the row unconditionally so the caller can distinguish
+  // "not found" from "not yours" if it wants to (we collapse both to 404
+  // externally to avoid leaking existence via the response code).
+  async getSessionResult(sessionId) {
+    const { rows } = await pool.query(`
+      SELECT session_id, scenario, outcome, risk_score, risk_tier,
+             had_step_up, step_up_passed, agent_mode, api_key,
+             elapsed_ms, signal_counts, signal_dimensions, ended_at
+      FROM   ${G}.leaderboard_entries
+      WHERE  session_id = $1
+    `, [sessionId]);
+    return rows[0] || null;
+  }
+
   recordTelemetrySnapshot(sessionId, step, payload) {
     const seq = (this._snapSeqs.get(sessionId) || 0) + 1;
     this._snapSeqs.set(sessionId, seq);
@@ -179,70 +233,99 @@ class PgVisitorStore extends VisitorStore {
   }
 
   async leaderboard(metric = 'persistent', limit = 20) {
-    const { rows: visitors } = await pool.query(`
-      SELECT * FROM ${G}.visitors
+    // Reads exclusively from leaderboard_entries — the denormalised, no-TTL
+    // table. Joins to visitor_ja3 / visitor_ua for fingerprint variety. The
+    // old per-visitor fan-out (5 queries × N visitors) is replaced by 4 fixed
+    // GROUP BY queries scoped to the keyed-visitor set.
+    //
+    // "Keyed visitor" criterion matches the old query: at least one entry
+    // with api_key IS NOT NULL. Per-visitor stats then aggregate ALL their
+    // entries (anonymous + keyed), preserving prior semantics.
+    const { rows: stats } = await pool.query(`
+      SELECT
+        visitor_id,
+        MAX(handle)                                        AS handle,
+        COUNT(*)::int                                      AS visit_count,
+        COUNT(*) FILTER (WHERE outcome = 'complete')::int  AS complete_count,
+        COUNT(*) FILTER (WHERE outcome = 'block')::int     AS block_count,
+        COALESCE(SUM(had_step_up), 0)::int                 AS stepup_encountered,
+        COALESCE(SUM(step_up_passed), 0)::int              AS stepup_passed,
+        AVG(risk_score)::float                             AS avg_score,
+        MIN(risk_score)::int                               AS best_score,
+        MIN(ended_at)::bigint                              AS first_seen,
+        MAX(ended_at)::bigint                              AS last_seen
+      FROM ${G}.leaderboard_entries
       WHERE visitor_id IN (
-        SELECT DISTINCT visitor_id FROM ${G}.sessions WHERE api_key IS NOT NULL
+        SELECT DISTINCT visitor_id FROM ${G}.leaderboard_entries WHERE api_key IS NOT NULL
       )
+      GROUP BY visitor_id
     `);
+    if (stats.length === 0) return [];
+    const visitorIds = stats.map(r => r.visitor_id);
 
-    const enriched = await Promise.all(visitors.map(async (v) => {
-      const id = v.visitor_id;
+    // Per-visitor signal counts — unrolled from the JSONB signal_counts column
+    // across all of the visitor's entries. Drives signalVariety + dimensionScores.
+    const { rows: sigRows } = await pool.query(`
+      SELECT visitor_id, key AS signal, SUM(value::int)::int AS cnt
+      FROM   ${G}.leaderboard_entries,
+      LATERAL jsonb_each_text(signal_counts)
+      WHERE  visitor_id = ANY($1)
+      GROUP  BY visitor_id, key
+    `, [visitorIds]);
 
-      const { rows: scoreRows } = await pool.query(
-        `SELECT risk_score FROM ${G}.sessions WHERE visitor_id = $1 ORDER BY ended_at DESC LIMIT 100`, [id],
-      );
-      const scores     = scoreRows.map(r => r.risk_score);
-      const avgScore   = scores.length ? +(scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : null;
-      const bestScore  = scores.length ? Math.min(...scores) : null;
+    // Scenarios actually run with a key — matches prior filter (keyed only,
+    // excluding 'unknown').
+    const { rows: scnRows } = await pool.query(`
+      SELECT visitor_id, ARRAY_AGG(DISTINCT scenario) AS scenarios
+      FROM   ${G}.leaderboard_entries
+      WHERE  visitor_id = ANY($1)
+        AND  api_key IS NOT NULL
+        AND  scenario != 'unknown'
+      GROUP  BY visitor_id
+    `, [visitorIds]);
 
-      const { rows: allSigRows } = await pool.query(`
-        SELECT ss.signal, COUNT(*)::int AS cnt
-        FROM   ${G}.session_signals ss
-        JOIN   ${G}.sessions s ON ss.session_id = s.session_id
-        WHERE  s.visitor_id = $1
-        GROUP  BY ss.signal
-      `, [id]);
-      const sigCounts = {};
-      for (const r of allSigRows) sigCounts[r.signal] = r.cnt;
+    // JA3 + UA variety come from the visitor dimension tables (no TTL).
+    const { rows: ja3Rows } = await pool.query(`
+      SELECT visitor_id, COUNT(*)::int AS c FROM ${G}.visitor_ja3
+      WHERE visitor_id = ANY($1) GROUP BY visitor_id
+    `, [visitorIds]);
+    const { rows: uaRows } = await pool.query(`
+      SELECT visitor_id, COUNT(*)::int AS c FROM ${G}.visitor_ua
+      WHERE visitor_id = ANY($1) GROUP BY visitor_id
+    `, [visitorIds]);
 
+    const sigByVisitor = {};
+    for (const r of sigRows) (sigByVisitor[r.visitor_id] ??= {})[r.signal] = r.cnt;
+    const scnByVisitor = Object.fromEntries(scnRows.map(r => [r.visitor_id, r.scenarios || []]));
+    const ja3ByVisitor = Object.fromEntries(ja3Rows.map(r => [r.visitor_id, r.c]));
+    const uaByVisitor  = Object.fromEntries(uaRows.map(r => [r.visitor_id, r.c]));
+
+    const enriched = stats.map(v => {
+      const sigCounts = sigByVisitor[v.visitor_id] || {};
       const dimensionScores = {};
       for (const [dim, sigs] of Object.entries(DIMENSIONS)) {
         dimensionScores[dim] = sigs.reduce((sum, s) => sum + (sigCounts[s] || 0), 0);
       }
-
-      const { rows: scenarioRows } = await pool.query(
-        `SELECT DISTINCT scenario FROM ${G}.sessions WHERE visitor_id = $1 AND api_key IS NOT NULL`,
-        [id],
-      );
-      const scenarioList = scenarioRows.map(r => r.scenario).filter(s => s && s !== 'unknown');
-
-      const { rows: [ja3Row] } = await pool.query(
-        `SELECT COUNT(*)::int AS c FROM ${G}.visitor_ja3 WHERE visitor_id = $1`, [id],
-      );
-      const { rows: [uaRow] } = await pool.query(
-        `SELECT COUNT(*)::int AS c FROM ${G}.visitor_ua  WHERE visitor_id = $1`, [id],
-      );
-
+      const scenarioList = (scnByVisitor[v.visitor_id] || []).filter(s => s && s !== 'unknown');
       return {
-        visitorId:          id,
+        visitorId:          v.visitor_id,
         handle:             v.handle,
         visitCount:         v.visit_count,
         outcomes:           { complete: v.complete_count, block: v.block_count },
         stepUpsEncountered: v.stepup_encountered,
         stepUpsPassed:      v.stepup_passed,
-        avgScore,
-        bestScore,
+        avgScore:           v.avg_score !== null ? +Number(v.avg_score).toFixed(1) : null,
+        bestScore:          v.best_score,
         signalVariety:      Object.keys(sigCounts).length,
         dimensionScores,
         scenariosRun:       scenarioList.length,
         scenarioList,
         lastSeen:           Number(v.last_seen),
         firstSeen:          Number(v.first_seen),
-        ja3Count:           ja3Row?.c || 0,
-        uaCount:            uaRow?.c  || 0,
+        ja3Count:           ja3ByVisitor[v.visitor_id] || 0,
+        uaCount:            uaByVisitor[v.visitor_id]  || 0,
       };
-    }));
+    });
 
     const ranker = {
       stealthy:   x => x.outcomes.complete > 0 ? -(x.avgScore ?? 0) : -999,
@@ -257,10 +340,10 @@ class PgVisitorStore extends VisitorStore {
 
   async count() {
     const { rows: [row] } = await pool.query(
-      `SELECT COUNT(DISTINCT visitor_id)::int AS c FROM ${G}.sessions WHERE api_key IS NOT NULL`,
+      `SELECT COUNT(DISTINCT visitor_id)::int AS c FROM ${G}.leaderboard_entries WHERE api_key IS NOT NULL`,
     );
     return row?.c || 0;
   }
 }
 
-module.exports = { PgVisitorStore };
+module.exports = { PgVisitorStore, aggregateSignals, DIMENSIONS };

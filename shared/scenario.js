@@ -116,6 +116,50 @@ function send429(res, info) {
   return res.status(429).json({ ok: false, ...info });
 }
 
+// risk_tier → action mapping. Mirrors the assignments in shared/risk.js's
+// computeRisk(); deriving rather than storing avoids drift when THRESHOLDS
+// are tuned (the tier is authoritative at session time).
+function actionForTier(tier) {
+  if (tier === 'high')   return 'block';
+  if (tier === 'medium') return 'step_up';
+  return 'allow';
+}
+
+// Build the GET /api/session/:id/result payload. Three-tier:
+//   anonymous     → never reaches here (attachApiKeyReadOnly returns 401)
+//   free          → score / tier / action / scenario / outcome / duration_ms
+//   pro / ent     → + breakdown (signal + weight pairs) + thresholds
+//
+// The breakdown is reconstructed from leaderboard_entries.signal_counts so it
+// works after the 7-day TTL on session_signals — same data, denormalised at
+// write time and aggregated at read time. Signals are emitted one entry per
+// occurrence (matching computeRisk()'s breakdown shape) and sorted by weight
+// descending so the highest-impact signals surface first.
+function resultResponse(row, keyTier) {
+  const base = {
+    sessionId:    row.session_id,
+    scenario:     row.scenario,
+    outcome:      row.outcome,
+    score:        row.risk_score,
+    tier:         row.risk_tier,
+    action:       actionForTier(row.risk_tier),
+    duration_ms:  row.elapsed_ms,
+    agent_mode:   row.agent_mode,
+    ended_at:     Number(row.ended_at),
+  };
+  if (keyTier === 'pro' || keyTier === 'enterprise') {
+    const counts    = row.signal_counts || {};
+    const breakdown = [];
+    for (const [signal, count] of Object.entries(counts)) {
+      const weight = SIGNAL_WEIGHTS[signal] ?? 5; // unknown-signal default matches risk.js
+      for (let i = 0; i < count; i++) breakdown.push({ signal, weight });
+    }
+    breakdown.sort((a, b) => b.weight - a.weight);
+    return { ...base, breakdown, thresholds: THRESHOLDS };
+  }
+  return base;
+}
+
 // Middleware: validates x-api-key + enforces all rate limits.
 //
 // Anonymous: 5 sessions/day per IP, 3/min burst (rate-limit.js)
@@ -163,6 +207,45 @@ async function attachApiKey(req, res, next) {
     if (!usage.allowed) {
       return send429(res, { ...usage, hint: 'Upgrade to Pro for higher limits.' });
     }
+
+    req.apiKey  = keyRow.key;
+    req.keyTier = keyRow.tier;
+    next();
+  } catch (e) {
+    next(e);
+  }
+}
+
+// Like attachApiKey but for read-only endpoints (e.g. session result lookup).
+// Differences from attachApiKey:
+//   • Anonymous → 401. Read endpoints always require a key.
+//   • Does NOT increment daily/monthly usage. Daily quota is for runs, not
+//     reads. Polling a result you already paid for shouldn't deplete it.
+//   • Burst bucket is "key-read:<key>" — separate from "key:<key>" used by
+//     run traffic. Heavy reading can't starve runs and vice versa.
+//
+// Burst limits (per minute, per key):
+//   Free:            FREE_BURST_PER_MIN (20)
+//   Pro / Enterprise: PRO_BURST_PER_MIN  (60)
+async function attachApiKeyReadOnly(req, res, next) {
+  try {
+    const ip     = rateLimit.getClientIp(req);
+    req.clientIp = ip;
+    const rawKey = req.headers['x-api-key'] || req.query.api_key;
+
+    if (!rawKey) {
+      return res.status(401).json({ ok: false, reason: 'api_key_required' });
+    }
+
+    const keyRow = await validateKey(rawKey);
+    if (!keyRow || !keyRow.active) {
+      return res.status(401).json({ ok: false, reason: 'invalid_api_key' });
+    }
+
+    const burstLimit = keyRow.tier === 'pro' || keyRow.tier === 'enterprise'
+      ? rateLimit.PRO_BURST_PER_MIN : rateLimit.FREE_BURST_PER_MIN;
+    const burst = await rateLimit.checkBurst(`key-read:${keyRow.key}`, burstLimit);
+    if (!burst.allowed) return send429(res, burst);
 
     req.apiKey  = keyRow.key;
     req.keyTier = keyRow.tier;
@@ -547,6 +630,39 @@ function createScenario({
                entries: await visitorStore.leaderboard(metric, limit) });
   });
 
+  // Result lookup for a single past session. Requires an API key (no anonymous
+  // access). Three-tier response shape — see resultResponse() in this file.
+  //
+  // Security model:
+  //   • Format check rejects malformed IDs without touching the DB (cheap DoS
+  //     guard against random-ID enumeration).
+  //   • Ownership: session.api_key must match the requesting key. Mismatch
+  //     and "not found" both return 404 so an attacker can't enumerate valid
+  //     session IDs by observing the response code.
+  //   • Burst rate-limited (key-read bucket) by attachApiKeyReadOnly, separate
+  //     from the run-traffic burst bucket — heavy polling can't deplete the
+  //     run-quota budget.
+  //   • TTL: 7 days from ended_at. After that the underlying sessions /
+  //     session_signals rows are gone (cleanup script), so we return 410 even
+  //     though the leaderboard_entries row still exists.
+  const SESSION_ID_RE = /^[0-9a-f]{32}$/;
+  const RESULT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+  app.get('/api/session/:id/result', attachApiKeyReadOnly, async (req, res) => {
+    const sessionId = req.params.id;
+    if (!SESSION_ID_RE.test(sessionId)) {
+      return res.status(404).json({ ok: false, reason: 'not_found' });
+    }
+    const row = await visitorStore.getSessionResult(sessionId);
+    if (!row || row.api_key !== req.apiKey) {
+      return res.status(404).json({ ok: false, reason: 'not_found' });
+    }
+    if (Date.now() - Number(row.ended_at) > RESULT_TTL_MS) {
+      return res.status(410).json({ ok: false, reason: 'expired',
+        hint: 'Session detail is retained for 7 days. Aggregated stats remain on the leaderboard.' });
+    }
+    res.json({ ok: true, ...resultResponse(row, req.keyTier) });
+  });
+
   app.get('/api/risk-weights', (_req, res) => {
     if (isSelfHosted()) {
       // Self-hosted scoring uses shared/risk.js — return the in-process values
@@ -616,6 +732,7 @@ function createScenario({
 module.exports = {
   createScenario,
   attachApiKey,
+  attachApiKeyReadOnly,
   rateLimitRegistration,
   // Pure helpers available without calling createScenario
   randInt, median,
