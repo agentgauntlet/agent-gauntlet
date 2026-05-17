@@ -100,6 +100,12 @@
         reverse_proxy localhost:3000
     }
 
+    # /api/enterprise/* — pub/secret key management endpoints, also
+    # registered by createScenario().
+    handle /api/enterprise/* {
+        reverse_proxy localhost:3000
+    }
+
     # Leaderboard (served by cart, shared DB)
     handle /leaderboard* {
         reverse_proxy localhost:3000
