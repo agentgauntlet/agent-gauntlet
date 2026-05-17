@@ -20,6 +20,7 @@ const SIGNAL_WEIGHTS = {
   no_grease:                       15,
   no_supported_versions:           20,
   no_signature_algorithms:         15,
+  known_bot_ja3:                   70,
 
   // ---- Browser environment fingerprint ----
   no_fingerprint_object:           80,

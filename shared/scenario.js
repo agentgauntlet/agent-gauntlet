@@ -34,6 +34,7 @@ const { initSchema }                               = require('./db');
 const https = require('https');
 const { validateKey, checkAndIncrementUsage, createKey, getKeyInfo, findOrCreateOAuthKey, getOauthIdentityForKey, FREE_DAILY_LIMIT } = require('./api-keys');
 const { issueDetectToken, verifyDetectToken } = require('./detect-token');
+const ja3Known = require('./ja3-known');
 const entKeys = require('./enterprise-keys');
 
 // ─── Pure helpers (also exported at module level) ────────────────────────────
@@ -824,24 +825,28 @@ function createScenario({
     const burst = await rateLimit.checkBurst(`key-detect-score:${envelope.pub}`, burstLimit);
     if (!burst.allowed) return send429(res, burst);
 
-    // Derive signals from the three sources the platform already supports:
+    // Derive signals from the four sources the platform supports:
     //   • HTTP headers       (UA strings, missing client hints, etc.)
     //   • Browser fingerprint (webdriver flag, canvas/audio hashes, etc.)
     //   • Behavioral snapshot (mouse, click, keystroke, scroll patterns)
-    //
-    // TLS / JA3 is omitted intentionally — detect.js calls go through CDN,
-    // so the JA3 we'd see is Cloudflare's, not the real client's. JA3
-    // scoring is reserved for the proxy-plugin path (Phase 3+).
+    //   • JA3 fingerprint    (TLS handshake; only when the upstream proxy
+    //                         forwards a Cf-Ja3-Hash / X-Ja3 header —
+    //                         Cloudflare Bot Mgmt or a JA3-capable Caddy
+    //                         module. No header → no JA3 signal, which is
+    //                         correct for the common free-tier setup)
     const headerFlags = scoreHeaders(req.headers);
     const fpFlags     = scoreFingerprint(bundle.fingerprint || {});
     const behSignals  = scoreBehavioral(bundle.telemetry || {}, {
       elapsedMs: typeof bundle.elapsedMs === 'number' ? bundle.elapsedMs : undefined,
     });
+    const ja3Hash     = ja3Known.extractClientJA3(req);
+    const ja3Signals  = ja3Hash && ja3Known.isKnownBotJA3(ja3Hash) ? ['known_bot_ja3'] : [];
 
     const signals = [
       ...headerFlags.hard, ...headerFlags.soft,
       ...fpFlags.hard,     ...fpFlags.soft,
       ...behSignals,
+      ...ja3Signals,
     ];
     const risk = computeRisk(signals);
 
