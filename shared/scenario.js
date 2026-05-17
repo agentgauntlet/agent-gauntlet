@@ -32,9 +32,10 @@ const { computeVisitorId, handleFor }              = require('./visitor-store');
 const { PgVisitorStore }                           = require('./pg-visitor-store');
 const { initSchema }                               = require('./db');
 const https = require('https');
-const { validateKey, checkAndIncrementUsage, createKey, getKeyInfo, findOrCreateOAuthKey, FREE_DAILY_LIMIT } = require('./api-keys');
+const { validateKey, checkAndIncrementUsage, createKey, getKeyInfo, findOrCreateOAuthKey, getOauthIdentityForKey, FREE_DAILY_LIMIT } = require('./api-keys');
 const { issueDetectToken, verifyDetectToken } = require('./detect-token');
 const ja3Known = require('./ja3-known');
+const entKeys = require('./enterprise-keys');
 
 // ─── Pure helpers (also exported at module level) ────────────────────────────
 
@@ -704,14 +705,13 @@ function createScenario({
 
   // GET /api/detect/token — issue a per-page-load HMAC-signed envelope.
   //
-  // Flow: detect.js calls this once on load to obtain a short-lived token,
-  // then bundles signals + token into the eventual /api/detect/score request
-  // (or a form-submit payload that the enterprise's backend forwards).
-  //
-  // Phase 2a uses the existing agg_* API key as the "pub key". Phase 3 will
-  // introduce a separate enterprise ent_pub_*/ent_sec_* pair with registered
-  // domain locking — at that point the validateKey() call below switches to
-  // a pub-key-table lookup with Origin enforcement.
+  // Two key types are accepted as the X-Pub-Key:
+  //   agg_*       agent-builder key from the existing api_keys table.
+  //               Used for demos and self-hosted dev. No domain enforcement.
+  //   ent_pub_*   enterprise pub key from enterprise_keys table. Domain
+  //               locking is enforced — the request Origin's hostname must
+  //               be in enterprise_domains for this pub key, otherwise
+  //               403 origin_not_registered.
   //
   // Rate limit: per-key burst on a dedicated "key-detect:" bucket so token
   // traffic doesn't share budget with scenario runs or result reads. Daily/
@@ -721,29 +721,51 @@ function createScenario({
     if (!pubKey) {
       return res.status(401).json({ ok: false, reason: 'pub_key_required' });
     }
-    const keyRow = await validateKey(pubKey);
-    if (!keyRow || !keyRow.active) {
-      return res.status(401).json({ ok: false, reason: 'invalid_pub_key' });
-    }
 
-    const burstLimit = keyRow.tier === 'pro' || keyRow.tier === 'enterprise'
-      ? rateLimit.PRO_BURST_PER_MIN : rateLimit.FREE_BURST_PER_MIN;
-    const burst = await rateLimit.checkBurst(`key-detect:${keyRow.key}`, burstLimit);
-    if (!burst.allowed) return send429(res, burst);
-
-    // Capture the requesting domain. detect.js running on a real site sets
-    // Origin; older / non-CORS contexts may set only Referer. The domain is
-    // recorded in the signed envelope so /score can verify it later even if
-    // the bundle is forwarded server-to-server (where Origin won't survive).
+    // Capture the requesting domain up-front. detect.js on a real site
+    // sets Origin; older / non-CORS contexts may set only Referer. Used
+    // for enterprise domain locking and stamped into the signed envelope
+    // so /score can verify it even when bundles travel server-to-server
+    // (where Origin won't survive the second hop).
     let domain = null;
     const originHdr = req.headers.origin || req.headers.referer;
     if (originHdr) {
       try { domain = new URL(originHdr).hostname; } catch (_) {}
     }
 
+    let resolved;
+    if (pubKey.startsWith('ent_pub_')) {
+      const entRow = await entKeys.validateEnterprisePub(pubKey);
+      if (!entRow) {
+        return res.status(401).json({ ok: false, reason: 'invalid_pub_key' });
+      }
+      // Domain locking — enterprise keys MUST come from a registered
+      // domain. Reject anything else. (Phase 3b enforcement.)
+      if (!domain) {
+        return res.status(403).json({ ok: false, reason: 'origin_required',
+          hint: 'Enterprise keys require a browser Origin or Referer header for domain validation.' });
+      }
+      if (!(await entKeys.isDomainRegistered(entRow.pub_key, domain))) {
+        return res.status(403).json({ ok: false, reason: 'origin_not_registered',
+          hint: `Register ${domain} for this enterprise key via /enterprise-keys.html.` });
+      }
+      resolved = { key: entRow.pub_key, tier: 'enterprise', kind: 'ent' };
+    } else {
+      const keyRow = await validateKey(pubKey);
+      if (!keyRow || !keyRow.active) {
+        return res.status(401).json({ ok: false, reason: 'invalid_pub_key' });
+      }
+      resolved = { key: keyRow.key, tier: keyRow.tier, kind: 'agg' };
+    }
+
+    const burstLimit = resolved.tier === 'pro' || resolved.tier === 'enterprise'
+      ? rateLimit.PRO_BURST_PER_MIN : rateLimit.FREE_BURST_PER_MIN;
+    const burst = await rateLimit.checkBurst(`key-detect:${resolved.key}`, burstLimit);
+    if (!burst.allowed) return send429(res, burst);
+
     const issued = issueDetectToken({
-      pubKey: keyRow.key,
-      tier:   keyRow.tier,
+      pubKey: resolved.key,
+      tier:   resolved.tier,
       domain,
     });
 
@@ -783,6 +805,17 @@ function createScenario({
     const envelope = verifyDetectToken(token);
     if (!envelope) {
       return res.status(401).json({ ok: false, reason: 'invalid_or_expired_token' });
+    }
+
+    // Domain locking re-check for enterprise tokens. The envelope already
+    // carries a domain field stamped at /token issuance time, but we
+    // re-verify against the current registered list here so revoking a
+    // domain takes effect within the token's 5-minute TTL window rather
+    // than only on the next page load. Belt + braces.
+    if (envelope.pub && envelope.pub.startsWith('ent_pub_')) {
+      if (!envelope.dom || !(await entKeys.isDomainRegistered(envelope.pub, envelope.dom))) {
+        return res.status(403).json({ ok: false, reason: 'origin_not_registered' });
+      }
     }
 
     // Burst rate limit per pub key on a dedicated bucket so score traffic
@@ -832,6 +865,105 @@ function createScenario({
       // Free tier: signal names only, no per-signal weights.
       res.json({ ...base, signals: risk.breakdown.map(b => b.signal) });
     }
+  });
+
+  // ── /api/enterprise/* — management of ent_pub_*/ent_sec_* key pairs ─────
+  //
+  // Auth model: the caller authenticates with their agg_* API key (which
+  // is tied to an OAuth identity via the existing GitHub/LinkedIn flow).
+  // The OAuth identity is the owner of any enterprise keys provisioned
+  // here. Manual-signup agg_* keys (no OAuth) are rejected — owning an
+  // enterprise key requires a real account.
+  //
+  // Endpoints:
+  //   GET    /api/enterprise/keys                              list mine
+  //   POST   /api/enterprise/key                               create
+  //   POST   /api/enterprise/key/:pub/domains                  register
+  //   DELETE /api/enterprise/key/:pub/domains/:domain          unregister
+  //   POST   /api/enterprise/key/:pub/revoke                   revoke
+
+  async function requireOauthOwner(req, res) {
+    const apiKey = req.headers['x-api-key'] || req.query.api_key;
+    if (!apiKey) {
+      res.status(401).json({ ok: false, reason: 'api_key_required' });
+      return null;
+    }
+    const ident = await getOauthIdentityForKey(apiKey);
+    if (!ident) {
+      res.status(401).json({ ok: false, reason: 'oauth_account_required',
+        hint: 'Enterprise key management requires an OAuth-linked agg_* key. Sign in at /keys.html.' });
+      return null;
+    }
+    return ident;
+  }
+
+  app.get('/api/enterprise/keys', async (req, res) => {
+    const ident = await requireOauthOwner(req, res);
+    if (!ident) return;
+    const keys = await entKeys.listEnterpriseKeysForOwner(ident);
+    res.json({ ok: true, keys });
+  });
+
+  app.post('/api/enterprise/key', async (req, res) => {
+    const ident = await requireOauthOwner(req, res);
+    if (!ident) return;
+    const { name } = req.body || {};
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ ok: false, reason: 'name_required' });
+    }
+    try {
+      const { pubKey, secretKey } = await entKeys.createEnterpriseKey({
+        name, email: ident.email, owner: ident,
+      });
+      // The secret is shown ONCE here and never again. Document this in
+      // the response so the UI knows to surface a copy-once warning.
+      res.json({ ok: true, pubKey, secretKey, name: name.trim(),
+        hint: 'Copy the secretKey now — it will not be shown again. Set it as DETECT_SECRET on your backend.' });
+    } catch (e) {
+      res.status(500).json({ ok: false, reason: 'create_failed', detail: e.message });
+    }
+  });
+
+  app.post('/api/enterprise/key/:pub/domains', async (req, res) => {
+    const ident = await requireOauthOwner(req, res);
+    if (!ident) return;
+    const pubKey = req.params.pub;
+    if (!(await entKeys.isOwnedBy(pubKey, ident))) {
+      return res.status(404).json({ ok: false, reason: 'not_found' });
+    }
+    const { domain } = req.body || {};
+    try {
+      const added = await entKeys.addDomain(pubKey, domain);
+      res.json({ ok: true, pubKey, domain: added, domains: await entKeys.getDomains(pubKey) });
+    } catch (e) {
+      if (e.message === 'invalid_domain') {
+        return res.status(400).json({ ok: false, reason: 'invalid_domain',
+          hint: 'Provide a hostname like acme.com or app.acme.co.uk — no scheme, no port, no path.' });
+      }
+      res.status(500).json({ ok: false, reason: 'add_failed', detail: e.message });
+    }
+  });
+
+  app.delete('/api/enterprise/key/:pub/domains/:domain', async (req, res) => {
+    const ident = await requireOauthOwner(req, res);
+    if (!ident) return;
+    const pubKey = req.params.pub;
+    if (!(await entKeys.isOwnedBy(pubKey, ident))) {
+      return res.status(404).json({ ok: false, reason: 'not_found' });
+    }
+    await entKeys.removeDomain(pubKey, req.params.domain);
+    res.json({ ok: true, domains: await entKeys.getDomains(pubKey) });
+  });
+
+  app.post('/api/enterprise/key/:pub/revoke', async (req, res) => {
+    const ident = await requireOauthOwner(req, res);
+    if (!ident) return;
+    const pubKey = req.params.pub;
+    if (!(await entKeys.isOwnedBy(pubKey, ident))) {
+      return res.status(404).json({ ok: false, reason: 'not_found' });
+    }
+    await entKeys.revoke(pubKey);
+    res.json({ ok: true, revoked: pubKey });
   });
 
   // Result lookup for a single past session. Requires an API key (no anonymous
