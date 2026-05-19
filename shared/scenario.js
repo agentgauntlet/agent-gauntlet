@@ -30,7 +30,7 @@ const { computeRisk, computeHostedRisk, SIGNAL_WEIGHTS, THRESHOLDS, isSelfHosted
 const rateLimit = require('./rate-limit');
 const { computeVisitorId, handleFor }              = require('./visitor-store');
 const { PgVisitorStore }                           = require('./pg-visitor-store');
-const { initSchema }                               = require('./db');
+const { initSchema, pool }                         = require('./db');
 const https = require('https');
 const { validateKey, checkAndIncrementUsage, createKey, getKeyInfo, findOrCreateOAuthKey, getOauthIdentityForKey, FREE_DAILY_LIMIT } = require('./api-keys');
 const { issueDetectToken, verifyDetectToken } = require('./detect-token');
@@ -1020,6 +1020,40 @@ function createScenario({
     res.json({ https: isHttps, captured: !!fp, ja3Hash: fp ? fp.hash : null,
                flags: isHttps ? tlsFp.scoreTls(fp) : { hard: [], soft: [] } });
   });
+
+  // ── Hackathon events (Phase 0: feature-flagged stub) ─────────────────────
+  //
+  // The events module lives in the private repo, consumed here via the
+  // `private/` git submodule. It is mounted only when:
+  //   1. ENABLE_EVENTS=true is set on the host
+  //   2. This scenario service is the designated events host (default
+  //      'cart-checkout' — same service that already owns the leaderboard,
+  //      detect, enterprise, and keys endpoints per Caddyfile routing)
+  //
+  // Failure modes are caught: a missing submodule, broken require, or mount
+  // exception logs a warning but does NOT crash the scenario service or
+  // affect any core endpoint. Core code never imports the events module.
+  //
+  // Isolation contract (see private/events/README.md):
+  //   - events module may READ from core tables via deps
+  //   - events module must NOT write to core tables directly
+  //   - no core file may import from private/events/*
+  if (process.env.ENABLE_EVENTS === 'true' &&
+      scenario === (process.env.EVENTS_HOST_SCENARIO || 'cart-checkout')) {
+    try {
+      // eslint-disable-next-line global-require
+      const events = require('../private/events/src');
+      const apiKeysModule = require('./api-keys');
+      const result = events.mount(app, {
+        corePool:     pool,
+        apiKeys:      apiKeysModule,
+        visitorStore: visitorStore,
+      });
+      console.log(`[${scenario}] events module mounted (v${result.version}, ${result.routesMounted} routes)`);
+    } catch (err) {
+      console.warn(`[${scenario}] events module not mounted, continuing without: ${err.message}`);
+    }
+  }
 
   // ── Startup ───────────────────────────────────────────────────────────────
 
