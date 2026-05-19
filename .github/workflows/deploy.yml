@@ -23,27 +23,40 @@ jobs:
       - uses: actions/checkout@v4
         # NOTE: we do NOT pass `submodules: recursive` here. actions/checkout
         # treats failed submodule clone as a hard error, which blocks the
-        # whole deploy when PRIVATE_REPO_PAT is missing or expired. Instead
-        # we fetch the events submodule in a follow-up step that gracefully
-        # skips when no PAT is available — the events module loads as a
-        # stub via the try/catch in shared/scenario.js, and ENABLE_EVENTS
-        # being unset short-circuits the mount anyway.
+        # whole deploy when neither auth method is configured. Instead we
+        # fetch the events submodule in a follow-up step that gracefully
+        # skips when no credentials are available — the events module loads
+        # as a stub via the try/catch in shared/scenario.js, and
+        # ENABLE_EVENTS being unset short-circuits the mount anyway.
 
-      # Fetch the private events submodule using PRIVATE_REPO_PAT. If the
-      # secret isn't configured, skip cleanly — core deploys must never be
-      # blocked by missing access to the private repo.
-      - name: Fetch events submodule (if PAT available)
+      # Fetch the private events submodule. Tries auth methods in this
+      # order: SSH deploy key (preferred — scoped to one repo, immune to
+      # org PAT policies) → fine-grained PAT → skip. If none are
+      # configured, core deploys still succeed; the events module simply
+      # isn't pulled in.
+      - name: Fetch events submodule (SSH deploy key or PAT)
         env:
-          PAT: ${{ secrets.PRIVATE_REPO_PAT }}
+          SSH_KEY: ${{ secrets.EVENTS_DEPLOY_KEY }}
+          PAT:     ${{ secrets.PRIVATE_REPO_PAT }}
         run: |
-          if [ -z "$PAT" ]; then
-            echo "PRIVATE_REPO_PAT not set; skipping events submodule."
+          if [ -n "$SSH_KEY" ]; then
+            echo "Using SSH deploy key for events submodule."
+            mkdir -p ~/.ssh
+            echo "$SSH_KEY" > ~/.ssh/id_ed25519
+            chmod 600 ~/.ssh/id_ed25519
+            ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+            git config --global url."git@github.com:".insteadOf "https://github.com/"
+            git submodule update --init --recursive
+            echo "Events submodule fetched at $(cd private && git rev-parse --short HEAD)"
+          elif [ -n "$PAT" ]; then
+            echo "Using PAT for events submodule (fallback)."
+            git config --global url."https://x-access-token:${PAT}@github.com/".insteadOf "https://github.com/"
+            git submodule update --init --recursive
+            echo "Events submodule fetched at $(cd private && git rev-parse --short HEAD)"
+          else
+            echo "Neither EVENTS_DEPLOY_KEY nor PRIVATE_REPO_PAT is set; skipping events submodule."
             echo "The events module will load as a no-op stub (mount() is wrapped in try/catch)."
-            exit 0
           fi
-          git config --global url."https://x-access-token:${PAT}@github.com/".insteadOf "https://github.com/"
-          git submodule update --init --recursive
-          echo "Events submodule fetched at $(cd private && git rev-parse --short HEAD)"
 
       - uses: actions/setup-node@v4
         with:
@@ -77,19 +90,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         # Same as syntax-check: no submodule auto-fetch here. We do it
-        # explicitly in the next step so a missing PAT doesn't block the
-        # Fly deploy of the core app.
+        # explicitly in the next step so missing credentials don't block
+        # the Fly deploy of the core app.
 
-      - name: Fetch events submodule (if PAT available)
+      - name: Fetch events submodule (SSH deploy key or PAT)
         env:
-          PAT: ${{ secrets.PRIVATE_REPO_PAT }}
+          SSH_KEY: ${{ secrets.EVENTS_DEPLOY_KEY }}
+          PAT:     ${{ secrets.PRIVATE_REPO_PAT }}
         run: |
-          if [ -z "$PAT" ]; then
-            echo "PRIVATE_REPO_PAT not set; deploying without events submodule."
-            exit 0
+          if [ -n "$SSH_KEY" ]; then
+            mkdir -p ~/.ssh
+            echo "$SSH_KEY" > ~/.ssh/id_ed25519
+            chmod 600 ~/.ssh/id_ed25519
+            ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+            git config --global url."git@github.com:".insteadOf "https://github.com/"
+            git submodule update --init --recursive
+          elif [ -n "$PAT" ]; then
+            git config --global url."https://x-access-token:${PAT}@github.com/".insteadOf "https://github.com/"
+            git submodule update --init --recursive
+          else
+            echo "No submodule credentials configured; deploying core without events module."
           fi
-          git config --global url."https://x-access-token:${PAT}@github.com/".insteadOf "https://github.com/"
-          git submodule update --init --recursive
 
       - name: Setup flyctl
         # NOTE: pin to a commit SHA when ready (Settings → Security → Pinned actions).
