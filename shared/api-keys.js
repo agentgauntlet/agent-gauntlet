@@ -5,6 +5,41 @@ const FREE_DAILY_LIMIT = 100;
 const VALID_TIERS      = new Set(['free', 'pro', 'enterprise']);
 const G                = 'gauntlet';
 
+// Optional daily-limit override provider. Generic hook — any external
+// module (operator console, beta program, hackathon hosting, support
+// tickets) can register a function that, given an api_key, returns either
+// null (use default) or a positive number (elevated daily limit).
+//
+// The provider is invoked once per free-tier rate-limit check. It must be
+// fast and safe (errors are caught, logged, and treated as "no override").
+// Only one provider is registered at a time; calling setOverrideProvider
+// again replaces the previous one. Pass null to unregister.
+//
+// This file knows NOTHING about who the provider is or what it does. That
+// is the entire point: api-keys.js stays free of any specific feature
+// (events, beta, etc.) so adding or removing the consumer is a no-op here.
+let _overrideProvider = null;
+
+function setOverrideProvider(fn) {
+  if (fn !== null && typeof fn !== 'function') {
+    throw new Error('setOverrideProvider expects a function or null');
+  }
+  _overrideProvider = fn;
+}
+
+async function getDailyLimitForKey(key, fallback) {
+  if (!_overrideProvider) return fallback;
+  try {
+    const override = await _overrideProvider(key);
+    if (typeof override === 'number' && Number.isFinite(override) && override > 0) {
+      return override;
+    }
+  } catch (err) {
+    console.warn('[api-keys] override provider failed:', err.message);
+  }
+  return fallback;
+}
+
 function todayUtc() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -38,12 +73,17 @@ async function checkAndIncrementUsage(key, tier) {
     return { allowed: true };
   }
 
+  // Determine the daily limit for this key. The override provider (if any
+  // is registered) may bump the limit for keys that match its rules. If no
+  // provider, or provider returns null/error, fall back to FREE_DAILY_LIMIT.
+  const dailyLimit = await getDailyLimitForKey(key, FREE_DAILY_LIMIT);
+
   const { rows } = await pool.query(
     `SELECT runs FROM ${G}.daily_usage WHERE key = $1 AND date = $2`, [key, date],
   );
 
-  if (rows[0] && rows[0].runs >= FREE_DAILY_LIMIT) {
-    return { allowed: false, reason: 'daily_limit_exceeded', runsToday: rows[0].runs, dailyLimit: FREE_DAILY_LIMIT };
+  if (rows[0] && rows[0].runs >= dailyLimit) {
+    return { allowed: false, reason: 'daily_limit_exceeded', runsToday: rows[0].runs, dailyLimit };
   }
 
   await withTransaction(async (client) => {
@@ -57,7 +97,7 @@ async function checkAndIncrementUsage(key, tier) {
   const { rows: updated } = await pool.query(
     `SELECT runs FROM ${G}.daily_usage WHERE key = $1 AND date = $2`, [key, date],
   );
-  return { allowed: true, runsToday: updated[0]?.runs ?? 1, dailyLimit: FREE_DAILY_LIMIT };
+  return { allowed: true, runsToday: updated[0]?.runs ?? 1, dailyLimit };
 }
 
 // Look up the OAuth identity attached to an agg_* key. Used by the
@@ -124,4 +164,13 @@ async function findOrCreateOAuthKey(provider, oauthId, name, email) {
   return { key, tier: 'free', isNew: true };
 }
 
-module.exports = { createKey, validateKey, checkAndIncrementUsage, getKeyInfo, findOrCreateOAuthKey, getOauthIdentityForKey, FREE_DAILY_LIMIT };
+module.exports = {
+  createKey,
+  validateKey,
+  checkAndIncrementUsage,
+  getKeyInfo,
+  findOrCreateOAuthKey,
+  getOauthIdentityForKey,
+  setOverrideProvider,
+  FREE_DAILY_LIMIT,
+};
