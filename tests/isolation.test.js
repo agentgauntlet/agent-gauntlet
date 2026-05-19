@@ -132,3 +132,43 @@ test('core pg pool is sized for production load', () => {
   assert.ok(max >= 10,
     `core pg pool max should be at least 10 (got ${max}); events package owns a separate small pool`);
 });
+
+test('events host scenario default matches an actual scenario name', () => {
+  // Regression test for the bug that bricked Phases 0-5 in production:
+  // the events mount block in scenario.js guards on
+  //   scenario === (process.env.EVENTS_HOST_SCENARIO || 'cart')
+  // The default value MUST match one of the scenario names that the
+  // per-scenario servers actually pass to createScenario() — otherwise
+  // the condition is never satisfied and the events module silently
+  // fails to mount on any service.
+  //
+  // Previously this defaulted to 'cart-checkout' (the directory name)
+  // while cart-checkout/server.js registers as scenario: 'cart'. The
+  // bug was invisible until production smoke-test because all unit
+  // tests stubbed createScenario.
+  const scenarioSrc = readCore('shared/scenario.js');
+  const defaultMatch = scenarioSrc.match(/EVENTS_HOST_SCENARIO\s*\|\|\s*['"]([^'"]+)['"]/);
+  assert.ok(defaultMatch,
+    `expected to find EVENTS_HOST_SCENARIO default in shared/scenario.js`);
+  const defaultName = defaultMatch[1];
+
+  // Scenario services that actually mount endpoints via createScenario().
+  // 'landing' is not in this list — it's a thin proxy with no scenario.
+  const serverDirs = [
+    'cart-checkout', 'bank-login', 'payment-checkout', 'product-search',
+    'auction', 'crypto-exchange', 'image-captcha',
+  ];
+  const realNames = [];
+  for (const dir of serverDirs) {
+    const src = readCore(path.join(dir, 'server.js'));
+    const m   = src.match(/scenario:\s*['"]([^'"]+)['"]/);
+    if (m) realNames.push(m[1]);
+  }
+
+  assert.ok(realNames.length > 0,
+    'could not extract any scenario names from per-scenario servers');
+  assert.ok(realNames.includes(defaultName),
+    `EVENTS_HOST_SCENARIO default '${defaultName}' must match one of the actual ` +
+    `scenario names (${realNames.join(', ')}). Otherwise the events mount block ` +
+    `in shared/scenario.js becomes dead code and ENABLE_EVENTS=true has no effect.`);
+});
