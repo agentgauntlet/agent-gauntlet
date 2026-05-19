@@ -21,14 +21,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          # Pull the private/ submodule (events module) so the conditional
-          # require() in shared/scenario.js can resolve. Falls back gracefully
-          # if PRIVATE_REPO_PAT is not set (forks, contributor PRs from
-          # outside the org) — the events module simply won't be available
-          # and ENABLE_EVENTS=false will short-circuit the require.
-          submodules: recursive
-          token: ${{ secrets.PRIVATE_REPO_PAT || secrets.GITHUB_TOKEN }}
+        # NOTE: we do NOT pass `submodules: recursive` here. actions/checkout
+        # treats failed submodule clone as a hard error, which blocks the
+        # whole deploy when PRIVATE_REPO_PAT is missing or expired. Instead
+        # we fetch the events submodule in a follow-up step that gracefully
+        # skips when no PAT is available — the events module loads as a
+        # stub via the try/catch in shared/scenario.js, and ENABLE_EVENTS
+        # being unset short-circuits the mount anyway.
+
+      # Fetch the private events submodule using PRIVATE_REPO_PAT. If the
+      # secret isn't configured, skip cleanly — core deploys must never be
+      # blocked by missing access to the private repo.
+      - name: Fetch events submodule (if PAT available)
+        env:
+          PAT: ${{ secrets.PRIVATE_REPO_PAT }}
+        run: |
+          if [ -z "$PAT" ]; then
+            echo "PRIVATE_REPO_PAT not set; skipping events submodule."
+            echo "The events module will load as a no-op stub (mount() is wrapped in try/catch)."
+            exit 0
+          fi
+          git config --global url."https://x-access-token:${PAT}@github.com/".insteadOf "https://github.com/"
+          git submodule update --init --recursive
+          echo "Events submodule fetched at $(cd private && git rev-parse --short HEAD)"
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -60,9 +76,21 @@ jobs:
     environment: production    # requires manual approval — configured in repo settings
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          token: ${{ secrets.PRIVATE_REPO_PAT || secrets.GITHUB_TOKEN }}
+        # Same as syntax-check: no submodule auto-fetch here. We do it
+        # explicitly in the next step so a missing PAT doesn't block the
+        # Fly deploy of the core app.
+
+      - name: Fetch events submodule (if PAT available)
+        env:
+          PAT: ${{ secrets.PRIVATE_REPO_PAT }}
+        run: |
+          if [ -z "$PAT" ]; then
+            echo "PRIVATE_REPO_PAT not set; deploying without events submodule."
+            exit 0
+          fi
+          git config --global url."https://x-access-token:${PAT}@github.com/".insteadOf "https://github.com/"
+          git submodule update --init --recursive
+
       - name: Setup flyctl
         # NOTE: pin to a commit SHA when ready (Settings → Security → Pinned actions).
         uses: superfly/flyctl-actions/setup-flyctl@master
