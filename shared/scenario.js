@@ -1027,7 +1027,8 @@ function createScenario({
   // `private/` git submodule. It is mounted only when:
   //   1. ENABLE_EVENTS=true is set on the host
   //   2. This scenario service is the designated events host (default
-  //      'cart-checkout' — same service that already owns the leaderboard,
+  //      'cart' — the cart-checkout service uses scenario name 'cart',
+  //      not the directory name; it already owns the leaderboard,
   //      detect, enterprise, and keys endpoints per Caddyfile routing)
   //
   // Failure modes are caught: a missing submodule, broken require, or mount
@@ -1039,7 +1040,7 @@ function createScenario({
   //   - events module must NOT write to core tables directly
   //   - no core file may import from private/events/*
   if (process.env.ENABLE_EVENTS === 'true' &&
-      scenario === (process.env.EVENTS_HOST_SCENARIO || 'cart-checkout')) {
+      scenario === (process.env.EVENTS_HOST_SCENARIO || 'cart')) {
     try {
       // eslint-disable-next-line global-require
       const events = require('../private/events/src');
