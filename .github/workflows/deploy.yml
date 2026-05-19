@@ -41,10 +41,17 @@ jobs:
           node -e "require('./shared/scoring')"
           node -e "require('./shared/rate-limit')"
           node -e "require('./shared/risk')"
-      # Isolation contract — fails the build if hackathon events module
-      # accidentally couples back into core.
-      - name: Isolation tests
-        run: node --test tests/isolation.test.js
+      # All test files in tests/. Currently includes:
+      #   - isolation.test.js              (no core file imports private/events)
+      #   - api-keys-override.test.js      (override-provider hook contract)
+      #   - public-leaderboard-exclusion.test.js (env-var-driven exclusion)
+      # The shell glob picks up new tests/*.test.js files automatically.
+      # We use the explicit glob rather than bare `tests/` (which Node 24
+      # treats as a single module entry, not a directory of tests) or `node
+      # --test` (no args; auto-discovers but also picks up files outside
+      # tests/, e.g. node-sdk fixtures inside the private submodule).
+      - name: Tests
+        run: node --test tests/*.test.js
 
   deploy:
     name: Deploy to Fly.io
