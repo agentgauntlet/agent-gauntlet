@@ -26,6 +26,66 @@ const DIMENSIONS = {
                      'known_bot_ja3'],
 };
 
+// PUBLIC_LEADERBOARD_EXCLUDED_WINDOWS — operator-controlled config that
+// hides `leaderboard_entries` rows whose `ended_at` falls in a given window
+// from the public leaderboard AND the count() function.
+//
+// Set as JSON on the host (e.g., Fly secrets):
+//
+//   PUBLIC_LEADERBOARD_EXCLUDED_WINDOWS='[{"start":1716000000000,"end":1716100000000,"label":"aihack2026"}]'
+//
+// Used to keep hackathon runs from polluting the public board during /
+// after an event. Mechanism is generic — could equally be used to hide a
+// load test, a QA dry-run, or anything else operators don't want graded
+// against the public ranking. NOT tied to the events module: this code
+// has no idea that "events" exist.
+//
+// Parse failures, malformed entries, and missing env var all degrade
+// gracefully to "no exclusion" — operator misconfiguration cannot break
+// the public leaderboard.
+function parseExcludedWindows() {
+  const raw = process.env.PUBLIC_LEADERBOARD_EXCLUDED_WINDOWS;
+  if (!raw || typeof raw !== 'string') return [];
+  let arr;
+  try {
+    arr = JSON.parse(raw);
+  } catch (err) {
+    console.warn('[leaderboard] PUBLIC_LEADERBOARD_EXCLUDED_WINDOWS parse error:', err.message);
+    return [];
+  }
+  if (!Array.isArray(arr)) return [];
+  const cleaned = [];
+  for (const w of arr) {
+    if (!w || typeof w !== 'object') continue;
+    const start = Number(w.start);
+    const end   = Number(w.end);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) continue;
+    cleaned.push({ start, end, label: w.label ? String(w.label) : '' });
+  }
+  return cleaned;
+}
+
+// Given a list of windows and the index of the first param slot to use,
+// return { sql, params } where sql is a clause like
+//   AND NOT ((ended_at BETWEEN $1 AND $2) OR (ended_at BETWEEN $3 AND $4))
+// suitable for appending to a WHERE that already has at least one term.
+// Returns empty sql + empty params when there are no windows so callers
+// can unconditionally inline the fragment.
+function buildExclusionClause(windows, paramStartIdx = 1) {
+  if (!Array.isArray(windows) || windows.length === 0) {
+    return { sql: '', params: [] };
+  }
+  const conds  = [];
+  const params = [];
+  let p = paramStartIdx;
+  for (const w of windows) {
+    conds.push(`(ended_at BETWEEN $${p} AND $${p + 1})`);
+    params.push(w.start, w.end);
+    p += 2;
+  }
+  return { sql: ` AND NOT (${conds.join(' OR ')})`, params };
+}
+
 // Collapse a signal array into { name: count } and dimension totals. Used to
 // pre-compute the per-row aggregates stored in leaderboard_entries so the
 // leaderboard query never has to re-join session_signals.
@@ -242,6 +302,21 @@ class PgVisitorStore extends VisitorStore {
     // "Keyed visitor" criterion matches the old query: at least one entry
     // with api_key IS NOT NULL. Per-visitor stats then aggregate ALL their
     // entries (anonymous + keyed), preserving prior semantics.
+    //
+    // Operator-controlled exclusion windows hide rows whose ended_at falls
+    // in a given window (e.g., a hackathon period). See
+    // parseExcludedWindows() at the top of this file.
+    const windows = parseExcludedWindows();
+
+    // Apply the exclusion filter to the visitor-set sub-query so visitors
+    // whose ONLY keyed runs are in an excluded window don't show up at all.
+    const visitorSet = buildExclusionClause(windows, 1);
+    // Apply it again to the outer per-visitor aggregation so a visitor with
+    // both excluded and non-excluded runs has only the non-excluded ones
+    // contribute to their stats. Params are the SAME values; same indices
+    // can be referenced multiple times in a Postgres query.
+    const outerStats = buildExclusionClause(windows, 1);
+
     const { rows: stats } = await pool.query(`
       SELECT
         visitor_id,
@@ -257,33 +332,39 @@ class PgVisitorStore extends VisitorStore {
         MAX(ended_at)::bigint                              AS last_seen
       FROM ${G}.leaderboard_entries
       WHERE visitor_id IN (
-        SELECT DISTINCT visitor_id FROM ${G}.leaderboard_entries WHERE api_key IS NOT NULL
-      )
+        SELECT DISTINCT visitor_id FROM ${G}.leaderboard_entries
+        WHERE api_key IS NOT NULL${visitorSet.sql}
+      )${outerStats.sql}
       GROUP BY visitor_id
-    `);
+    `, visitorSet.params);
     if (stats.length === 0) return [];
     const visitorIds = stats.map(r => r.visitor_id);
 
     // Per-visitor signal counts — unrolled from the JSONB signal_counts column
     // across all of the visitor's entries. Drives signalVariety + dimensionScores.
+    // Excluded windows also filter here so signal counts from event runs
+    // don't inflate dimensionScores on the public board.
+    const sigExcl = buildExclusionClause(windows, 2);
     const { rows: sigRows } = await pool.query(`
       SELECT visitor_id, key AS signal, SUM(value::int)::int AS cnt
       FROM   ${G}.leaderboard_entries,
       LATERAL jsonb_each_text(signal_counts)
-      WHERE  visitor_id = ANY($1)
+      WHERE  visitor_id = ANY($1)${sigExcl.sql}
       GROUP  BY visitor_id, key
-    `, [visitorIds]);
+    `, [visitorIds, ...sigExcl.params]);
 
     // Scenarios actually run with a key — matches prior filter (keyed only,
-    // excluding 'unknown').
+    // excluding 'unknown'). Excluded windows filter here too so scenario
+    // counts reflect the public-board view.
+    const scnExcl = buildExclusionClause(windows, 2);
     const { rows: scnRows } = await pool.query(`
       SELECT visitor_id, ARRAY_AGG(DISTINCT scenario) AS scenarios
       FROM   ${G}.leaderboard_entries
       WHERE  visitor_id = ANY($1)
         AND  api_key IS NOT NULL
-        AND  scenario != 'unknown'
+        AND  scenario != 'unknown'${scnExcl.sql}
       GROUP  BY visitor_id
-    `, [visitorIds]);
+    `, [visitorIds, ...scnExcl.params]);
 
     // JA3 + UA variety come from the visitor dimension tables (no TTL).
     const { rows: ja3Rows } = await pool.query(`
@@ -340,11 +421,26 @@ class PgVisitorStore extends VisitorStore {
   }
 
   async count() {
+    // count() is the "total visitors" number shown above the public board.
+    // Matches the leaderboard query's visitor-set definition so the number
+    // stays consistent with what's actually displayed.
+    const windows = parseExcludedWindows();
+    const excl    = buildExclusionClause(windows, 1);
     const { rows: [row] } = await pool.query(
-      `SELECT COUNT(DISTINCT visitor_id)::int AS c FROM ${G}.leaderboard_entries WHERE api_key IS NOT NULL`,
+      `SELECT COUNT(DISTINCT visitor_id)::int AS c
+       FROM ${G}.leaderboard_entries
+       WHERE api_key IS NOT NULL${excl.sql}`,
+      excl.params,
     );
     return row?.c || 0;
   }
 }
 
-module.exports = { PgVisitorStore, aggregateSignals, DIMENSIONS };
+module.exports = {
+  PgVisitorStore,
+  aggregateSignals,
+  DIMENSIONS,
+  // Exported for tests and potential reuse
+  parseExcludedWindows,
+  buildExclusionClause,
+};
