@@ -106,6 +106,13 @@
         reverse_proxy localhost:3000
     }
 
+    # Health check — every scenario registers /api/health, route to cart
+    # for consistency. Used by the /event/:slug/check page and any external
+    # uptime monitor.
+    handle /api/health {
+        reverse_proxy localhost:3000
+    }
+
     # Leaderboard (served by cart, shared DB)
     handle /leaderboard* {
         reverse_proxy localhost:3000

@@ -421,6 +421,24 @@ function createScenario({
   // code; server-side modules in shared/*.js stay private (Node-only).
   app.use('/shared', express.static(path.join(__dirname, 'public')));
 
+  // GET /api/health — tiny ping endpoint for connectivity checks.
+  //
+  // Returns the current server clock and platform version so external
+  // callers (e.g. the /event/:slug/check page) can detect clock skew and
+  // confirm the service is reachable. No auth, no DB read, no rate limit.
+  // Kept here at the top of the route table so this responds even if
+  // downstream routes are misconfigured.
+  app.get('/api/health', (_req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.set('Access-Control-Allow-Origin', '*');
+    res.json({
+      ok:        true,
+      now:       Date.now(),
+      app:       'agentgauntlet',
+      scenario,
+    });
+  });
+
   // ── Helpers closed over scenario context ─────────────────────────────────
 
   function accumulateTelemetry(s, t = {}) {
@@ -701,6 +719,28 @@ function createScenario({
     res.set('Vary',                         'Origin');
     if (req.method === 'OPTIONS') return res.status(204).end();
     next();
+  });
+
+  // GET /api/detect/echo-ja3 — connectivity-check helper.
+  //
+  // Echoes back the JA3 hash that this server saw on the TLS handshake,
+  // plus a flag indicating whether it matches anything in the known-bot
+  // list. Used by the /event/:slug/check page (and any operator running
+  // a smoke test from a venue with TLS inspection) to confirm what
+  // their TLS layer looks like from our perspective.
+  //
+  // No auth. Tiny payload. Same CORS as the rest of /api/detect/*.
+  app.get('/api/detect/echo-ja3', (req, res) => {
+    const fp      = req.tlsFingerprint;
+    const ja3     = fp ? fp.hash : null;
+    const isHttps = req.protocol === 'https' || req.socket.encrypted === true;
+    res.json({
+      ok:          true,
+      https:       isHttps,
+      captured:    !!fp,
+      ja3,
+      knownProxy:  ja3 ? ja3Known.has(ja3) : false,
+    });
   });
 
   // GET /api/detect/token — issue a per-page-load HMAC-signed envelope.
