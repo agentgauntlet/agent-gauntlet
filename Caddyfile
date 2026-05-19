@@ -117,6 +117,16 @@
         reverse_proxy localhost:3000
     }
 
+    # Hackathon events (mounted by createScenario() on the cart-checkout
+    # service when ENABLE_EVENTS=true). /api/events/* is the cohort +
+    # leaderboard API; /event/<slug>* serves the leaderboard HTML page.
+    handle /api/events/* {
+        reverse_proxy localhost:3000
+    }
+    handle /event/* {
+        reverse_proxy localhost:3000
+    }
+
     # Landing page (everything else)
     handle {
         reverse_proxy localhost:3080
