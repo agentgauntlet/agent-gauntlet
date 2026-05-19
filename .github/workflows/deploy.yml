@@ -21,6 +21,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Pull the private/ submodule (events module) so the conditional
+          # require() in shared/scenario.js can resolve. Falls back gracefully
+          # if PRIVATE_REPO_PAT is not set (forks, contributor PRs from
+          # outside the org) — the events module simply won't be available
+          # and ENABLE_EVENTS=false will short-circuit the require.
+          submodules: recursive
+          token: ${{ secrets.PRIVATE_REPO_PAT || secrets.GITHUB_TOKEN }}
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -33,6 +41,10 @@ jobs:
           node -e "require('./shared/scoring')"
           node -e "require('./shared/rate-limit')"
           node -e "require('./shared/risk')"
+      # Isolation contract — fails the build if hackathon events module
+      # accidentally couples back into core.
+      - name: Isolation tests
+        run: node --test tests/isolation.test.js
 
   deploy:
     name: Deploy to Fly.io
@@ -41,6 +53,9 @@ jobs:
     environment: production    # requires manual approval — configured in repo settings
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.PRIVATE_REPO_PAT || secrets.GITHUB_TOKEN }}
       - name: Setup flyctl
         # NOTE: pin to a commit SHA when ready (Settings → Security → Pinned actions).
         uses: superfly/flyctl-actions/setup-flyctl@master

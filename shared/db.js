@@ -5,10 +5,14 @@ const { Pool } = require('pg');
 // and any query will fail naturally if the connection string is missing.
 const local = process.env.DATABASE_URL && /localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL);
 
+// Core pg pool. Sized for the agent-builder + agent-defender critical path.
+// The hackathon events module owns a SEPARATE pool (max=3) inside the
+// private events package so a runaway event query cannot starve core
+// endpoints. Keep these sizes coordinated with Neon's connection cap.
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: local ? false : { rejectUnauthorized: false },
-  max: 5,
+  max: 15,
   idleTimeoutMillis: 30000,
 });
 
