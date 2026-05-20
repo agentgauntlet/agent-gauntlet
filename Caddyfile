@@ -110,6 +110,16 @@
         reverse_proxy localhost:3000
     }
 
+    # OAuth signup callbacks (GitHub + LinkedIn). Registered on
+    # cart-checkout by createScenario(). Previously these fell through to
+    # the catch-all → landing's app.all('/auth/*', proxyTo(cart)) — works
+    # but adds an extra hop and makes OAuth signups depend on the landing
+    # service being healthy. Route them direct to cart for consistency
+    # with /api/keys/*, /api/detect/*, etc.
+    handle /auth/* {
+        reverse_proxy localhost:3000
+    }
+
     # Health check — every scenario registers /api/health, route to cart
     # for consistency. Used by the /event/:slug/check page and any external
     # uptime monitor.
