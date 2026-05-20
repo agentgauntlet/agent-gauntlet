@@ -18,7 +18,11 @@
     handle /api/v2/* {
         reverse_proxy localhost:3000
     }
-    handle /api/session {
+    # /api/session covers both the v1 POST and the new
+    # GET /api/session/:id/result endpoint added in Phase 1. The glob is
+    # important — without the * suffix the result lookup fell through to
+    # the landing service's catch-all and returned an HTML 404.
+    handle /api/session* {
         reverse_proxy localhost:3000
     }
     handle /api/checkout {
