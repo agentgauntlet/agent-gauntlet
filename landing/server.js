@@ -34,6 +34,7 @@ app.all('/auth/*',          (req, res) => proxyTo(CART_PORT, req, res));
 app.all('/shared/*',        (req, res) => proxyTo(CART_PORT, req, res));
 app.all('/api/detect/*',    (req, res) => proxyTo(CART_PORT, req, res));
 app.all('/api/enterprise/*',(req, res) => proxyTo(CART_PORT, req, res));
+app.all('/api/session*',    (req, res) => proxyTo(CART_PORT, req, res));
 app.all('/api/health',      (req, res) => proxyTo(CART_PORT, req, res));
 // Hackathon events — mounted on cart-checkout when ENABLE_EVENTS=true.
 app.all('/api/events/*',    (req, res) => proxyTo(CART_PORT, req, res));
